@@ -6,8 +6,16 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'Personal Assistant',
-  tagline: 'Who\'s Jarvis?',
+  tagline: 'Who needs Jarvis?',
   favicon: 'img/favicon.ico',
+
+  markdown: {
+    mermaid: true
+  },
+  themes: [
+    "@docusaurus/theme-live-codeblock",
+    "@docusaurus/theme-mermaid"
+  ],
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
