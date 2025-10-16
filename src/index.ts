@@ -1,13 +1,35 @@
 import Twilio from "twilio";
 import * as Bun from "bun";
+import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
 import cleanPublicURL from "./util/cleanPublicURL";
 import { TwilioWebsocket } from "../lib/TwilioWebsocketTypes";
+import { mulaw } from "alawmulaw";
 
 const PORT = process.env.PORT || 40451
 
 console.log("Hello via Bun!");
 
 const client = Twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+const deepgramClient = createClient(process.env.DEEPGRAM_ACCESS_TOKEN);
+
+const deepgramConnection = deepgramClient.listen.live({
+  model: "nova-3",
+  encoding: "mulaw",
+  sample_rate: 8000,
+  interim_results: true
+})
+
+deepgramConnection.on(LiveTranscriptionEvents.Open, () => {
+  console.log("Deepgram connection ready");
+
+  deepgramConnection.on(LiveTranscriptionEvents.Transcript, (data) => {
+    console.log("NEW TRANSCRIPT DATA:", 
+      data.is_final,
+      data.speech_final,
+      data.channel
+    );
+  });
+})
 
 Bun.serve({
   port: PORT,
@@ -79,17 +101,29 @@ Bun.serve({
       console.log("Websocket connection opened!");
     },
     message(ws, message) {
-      console.log("New message:", message);
+      // console.log("New message:", message);
       const json: TwilioWebsocket.Message = JSON.parse(message as string);
 
-      // Echo back to the caller
-      if(json.event === "media") {
-        const send: TwilioWebsocket.Sendable.MediaMessage = {
-          streamSid: json.streamSid,
-          event: "media",
-          media: { payload: json.media.payload }
+      switch (json.event) {
+        case "media": {
+          // Echo back to the user
+          const send: TwilioWebsocket.Sendable.MediaMessage = {
+            streamSid: json.streamSid,
+            event: "media",
+            media: { payload: json.media.payload }
+          }
+          ws.send(JSON.stringify(send));
+
+          const base64ToUint8Array = Uint8Array.fromBase64(json.media.payload);
+          deepgramConnection.send(base64ToUint8Array.buffer);
+
+          break;
         }
-        ws.send(JSON.stringify(send))
+
+        case "stop": {
+          console.log("User hung up!");
+          break;
+        }
       }
     }
   }

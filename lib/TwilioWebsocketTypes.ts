@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-export const NumberLikeSchema = z.string();
+export const NumberLikeSchema = z.string().brand<"NumberLike">();
 export type NumberLike = z.infer<typeof NumberLikeSchema>;
 
-export const Base64Schema = z.string();
+export const Base64Schema = z.string().brand<"Base64">();
 export type Base64 = z.infer<typeof Base64Schema>;
 
 export namespace TwilioWebsocket {
