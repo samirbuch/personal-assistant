@@ -45,12 +45,11 @@ Bun.serve({
       const ws = `wss://${publicURL}${isNgrok ? "" : `:${PORT}`}/twilio-ws`;
 
       const response = new Twilio.twiml.VoiceResponse();
-      const start = response.start();
-      start.stream({
+      const connect = response.connect();
+      connect.stream({
         name: "Inbound Audio Stream",
         url: ws
       });
-      response.say("Hello world!");
       console.log("Forwarding twilio call stream to:", ws);
 
       return new Response(
