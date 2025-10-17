@@ -2,28 +2,42 @@ import Twilio from "twilio";
 import * as Bun from "bun";
 import { createClient, LiveTranscriptionEvents, LiveTTSEvents, LiveClient, SpeakLiveClient } from "@deepgram/sdk";
 import cleanPublicURL from "./util/cleanPublicURL";
-import { TwilioWebsocket, Base64Schema } from "../lib/TwilioWebsocketTypes";
+import { TwilioWebsocket } from "../lib/TwilioWebsocketTypes";
 
-const PORT = process.env.PORT || 40451
+import { Experimental_Agent as Agent, stepCountIs, tool, type ModelMessage } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+
+const PORT = process.env.PORT || 40451;
 
 console.log("Hello via Bun!");
-
-interface LLMPromptMessage {
-  role: "user" | "assistant" | "tool",
-  content: string
-}
 
 interface CallSession {
   ws: Bun.ServerWebSocket;
   deepgramSTT: LiveClient;
   deepgramTTS: SpeakLiveClient;
-  conversation: LLMPromptMessage[];
+  conversation: ModelMessage[];
 }
 
 const callSessions = new Map<string, CallSession>();
 
 const client = Twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
 const deepgramClient = createClient(process.env.DEEPGRAM_ACCESS_TOKEN);
+
+const tools = {
+
+}
+
+const agent = new Agent({
+  model: anthropic("claude-3-5-haiku-latest"),
+  system: `
+  You are a helpful scheduling assistant named Jordan. You work for your client, Samir Buch. 
+  He uses he/him or they/them pronouns.
+  Upon request, his phone number is 267-625-3752, and his preferred email is samirjbuch@gmail.com.
+  Please note that your responses will be converted into audio, so take extra care to: spell out numbers, and avoid using punctuation that doesn't translate well into speech (including but not limited to slashes, brackets, braces, parentheses, or bullet points).
+  `,
+  tools,
+  stopWhen: stepCountIs(20)
+});
 
 Bun.serve({
   port: PORT,
@@ -130,7 +144,7 @@ Bun.serve({
             console.log(`[${json.streamSid}] Deepgram STT ready`);
           });
 
-          deepgramSTT.on(LiveTranscriptionEvents.Transcript, (data) => {
+          deepgramSTT.on(LiveTranscriptionEvents.Transcript, async (data) => {
             console.log(`[${json.streamSid}] Transcript:`,
               data.is_final,
               data.speech_final,
@@ -145,8 +159,21 @@ Bun.serve({
                   role: "user",
                   content: transcript
                 });
-                // TODO: Send to LLM and handle response
+
                 console.log(`[${json.streamSid}] Conversation:`, session.conversation);
+
+                // Stream text back from LLM
+                const result = agent.stream({
+                  prompt: session.conversation
+                });
+
+                // Stream the streamed text to deepgram TTS
+                for await (const chunk of result.textStream) {
+                  console.log(chunk)
+                  deepgramTTS.sendText(chunk);
+                }
+                // and flush when all chunks are done sending
+                deepgramTTS.flush();
               }
             }
           });
@@ -164,8 +191,17 @@ Bun.serve({
             console.log(`[${json.streamSid}] Deepgram TTS ready`);
           });
 
-          deepgramTTS.on(LiveTTSEvents.Audio, (audio) => {
+          deepgramTTS.on(LiveTTSEvents.Audio, (audio: Uint8Array) => {
             console.log(`[${json.streamSid}] Received TTS audio:`, audio.byteLength, "bytes");
+
+            // Convert the mulaw audio to base64
+            const b64 = audio.toBase64();
+            const msg: TwilioWebsocket.Sendable.MediaMessage = {
+              event: "media",
+              streamSid: json.streamSid,
+              media: { payload: b64 }
+            };
+            session.ws.send(JSON.stringify(msg));
           });
 
           deepgramTTS.on(LiveTTSEvents.Error, (error) => {
@@ -189,13 +225,13 @@ Bun.serve({
           const base64ToUint8Array = Uint8Array.fromBase64(json.media.payload);
           session.deepgramSTT.send(base64ToUint8Array.buffer);
 
-          // Echo back to user
-          const msg: TwilioWebsocket.Sendable.MediaMessage = {
-            event: "media",
-            streamSid: json.streamSid,
-            media: { payload: json.media.payload }
-          }
-          ws.send(JSON.stringify(msg));
+          // // Echo back to user
+          // const msg: TwilioWebsocket.Sendable.MediaMessage = {
+          //   event: "media",
+          //   streamSid: json.streamSid,
+          //   media: { payload: json.media.payload }
+          // }
+          // ws.send(JSON.stringify(msg));
 
           break;
         }
