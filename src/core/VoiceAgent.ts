@@ -10,7 +10,7 @@ import type { LiveClient, SpeakLiveClient } from "@deepgram/sdk";
 import type { Experimental_Agent as Agent } from "ai";
 import { VoiceAgentStateMachine, AgentState } from "./StateMachine";
 import { AudioController } from "./AudioController";
-import { ConversationManager } from "./ConversationManager";
+import { ConversationManager, Speaker } from "./ConversationManager";
 import { InterruptionDetector } from "./InterruptionDetector";
 
 export interface VoiceAgentConfig {
@@ -35,7 +35,7 @@ export class VoiceAgent {
   private tts: SpeakLiveClient;
   private agent!: Agent<{}, never, never>; // Will be set after construction
   private abortController: AbortController | null = null;
-  private audioInFlight: boolean = false; // Track if TTS is still sending audio
+  private audioInFlight: boolean = false;
 
   constructor(config: VoiceAgentConfig) {
     this.streamSid = config.streamSid;
@@ -79,8 +79,10 @@ export class VoiceAgent {
 
   /**
    * Handle user transcript from STT
+   * @param transcript The transcribed text
+   * @param speakerId Optional speaker ID from diarization (used in conference mode)
    */
-  public async handleTranscript(transcript: string): Promise<void> {
+  public async handleTranscript(transcript: string, speakerId?: number): Promise<void> {
     const currentState = this.stateMachine.getState();
     
     // If we receive a transcript while SPEAKING, that's an interruption
@@ -89,7 +91,7 @@ export class VoiceAgent {
       this.handleInterruption();
       
       // Add to conversation
-      this.conversation.addUserMessage(transcript);
+      this.conversation.addUserMessage(transcript, speakerId);
 
       // Transition to thinking
       this.stateMachine.transition(AgentState.THINKING, "Processing user input");
@@ -104,7 +106,7 @@ export class VoiceAgent {
       console.log(`[VoiceAgent] User said: "${transcript}"`);
 
       // Add to conversation
-      this.conversation.addUserMessage(transcript);
+      this.conversation.addUserMessage(transcript, speakerId);
 
       // Transition to thinking
       this.stateMachine.transition(AgentState.THINKING, "Processing user input");
@@ -334,6 +336,8 @@ export class VoiceAgent {
     });
   }
 
+
+
   /**
    * Clean up resources
    */
@@ -385,6 +389,8 @@ export class VoiceAgent {
     return this.callerPhone;
   }
 
+
+
   /**
    * Send DTMF tones over the connection
    */
@@ -402,6 +408,76 @@ export class VoiceAgent {
       };
       
       this.audio["ws"].send(JSON.stringify(dtmfMessage));
+    }
+  }
+
+  /**
+   * Transfer the call to a human by creating a conference
+   * 
+   * Implementation for Option 2: Graceful Disconnect
+   * 1. AI announces the transfer
+   * 2. Waits for announcement to complete
+   * 3. Creates conference (which disconnects AI stream)
+   * 4. Caller and owner continue in conference without AI
+   */
+  public async transferToHuman(reason: string): Promise<void> {
+    console.log(`[VoiceAgent] Transferring to human: ${reason}`);
+    
+    const ownerPhone = process.env.OWNER_PHONE_NUMBER;
+    const ownerName = process.env.OWNER_NAME || "a team member";
+    
+    if (!ownerPhone) {
+      throw new Error("OWNER_PHONE_NUMBER not configured");
+    }
+
+    // Step 1: Announce the transfer to the caller
+    // Force the agent into SPEAKING state to deliver this message
+    console.log(`[VoiceAgent] Announcing transfer to caller...`);
+    this.stateMachine.transition(AgentState.SPEAKING, "Announcing transfer to human");
+    
+    const announcement = `One moment please, let me connect you with ${ownerName}.`;
+    
+    // Send announcement to TTS
+    this.audio.enable();
+    this.tts.sendText(announcement);
+    this.tts.flush();
+    
+    // Wait for the announcement to be spoken (estimate ~3 seconds for typical announcement)
+    // We can't reliably detect when TTS finishes in this flow, so use a reasonable delay
+    console.log(`[VoiceAgent] Waiting for announcement to complete...`);
+    await new Promise(resolve => setTimeout(resolve, 3500));
+    
+    // Step 2: Create the conference
+    // This will disconnect the media stream (expected Twilio behavior for Option 2)
+    console.log(`[VoiceAgent] Creating conference (stream will disconnect)...`);
+    
+    const publicURL = process.env.PUBLIC_URL?.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const port = process.env.PORT || 40451;
+    const isNgrok = publicURL?.includes(".ngrok-free.app");
+    const url = `http://${publicURL}${isNgrok ? "" : `:${port}`}/api/create-conference/${this.streamSid}`;
+    
+    try {
+      const response = await fetch(url, { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to create conference: ${response.statusText}`);
+      }
+      
+      console.log(`[VoiceAgent] ✅ Conference creation initiated - AI will disconnect shortly`);
+      console.log(`[VoiceAgent] Caller and ${ownerName} will continue in conference`);
+      
+      // Clean up resources since we're about to disconnect
+      this.cleanup();
+      
+    } catch (error) {
+      console.error(`[VoiceAgent] Error creating conference:`, error);
+      // On error, transition back to listening so conversation can continue
+      this.stateMachine.transition(AgentState.LISTENING, "Transfer failed");
+      throw error;
     }
   }
 

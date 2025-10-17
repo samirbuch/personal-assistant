@@ -9,8 +9,15 @@ import { SessionManager } from "../managers/SessionManager";
 import { VoiceAgent } from "../core/VoiceAgent";
 import { createSTT, createTTS, setupSTTHandlers, setupTTSHandlers } from "../managers/DeepgramManager";
 import { createLLMAgent } from "../managers/LLMManager";
+import { ConferenceManager } from "../managers/ConferenceManager";
 
 const sessions = new SessionManager();
+let conferenceManager: ConferenceManager | null = null;
+
+// Initialize conference manager if owner phone is configured
+if (process.env.OWNER_PHONE_NUMBER) {
+  conferenceManager = new ConferenceManager(process.env.OWNER_PHONE_NUMBER);
+}
 
 export async function handleStart(
   message: TwilioWebsocket.StartMessage,
@@ -30,7 +37,8 @@ export async function handleStart(
   if (callerTo) console.log(`  📱 To: ${callerTo}`);
 
   // Create Deepgram connections
-  const stt = createSTT();
+  // Enable diarization for potential future use (doesn't hurt in single-speaker mode)
+  const stt = createSTT(true);
   const tts = createTTS();
 
   // Create voice agent first (without LLM agent)
@@ -48,7 +56,7 @@ export async function handleStart(
   voiceAgent.setAgent(agent);
 
   // Set up handlers
-  setupSTTHandlers(stt, voiceAgent, streamSid);
+  setupSTTHandlers(stt, voiceAgent, streamSid, true);
   setupTTSHandlers(tts, voiceAgent, streamSid);
 
   // Register session
@@ -91,4 +99,30 @@ export function getSession(streamSid: string): VoiceAgent | undefined {
 
 export function getSessionManager(): SessionManager {
   return sessions;
+}
+
+export function getConferenceManager(): ConferenceManager | null {
+  return conferenceManager;
+}
+
+export async function createConference(streamSid: string, reason: string): Promise<void> {
+  const agent = sessions.get(streamSid);
+  
+  if (!agent) {
+    throw new Error(`No agent found for ${streamSid}`);
+  }
+
+  if (!conferenceManager) {
+    throw new Error("Conference manager not initialized - OWNER_PHONE_NUMBER not set");
+  }
+
+  const callSid = agent.getCallSid();
+  
+  console.log(`[Twilio] Creating conference for ${streamSid} - Reason: ${reason}`);
+  
+  // Create conference and add owner
+  // Note: This will disconnect the AI's media stream (expected for Option 2)
+  await conferenceManager.createConferenceAndAddOwner(callSid, streamSid);
+  
+  console.log(`[Twilio] Conference created - caller and owner will continue without AI`);
 }

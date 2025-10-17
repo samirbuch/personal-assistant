@@ -7,7 +7,7 @@
 import Twilio from "twilio";
 import * as Bun from "bun";
 import { TwilioWebsocket } from "../lib/TwilioWebsocketTypes";
-import { handleStart, handleMedia, handleStop, getSession } from "./handlers/TwilioHandler";
+import { handleStart, handleMedia, handleStop, getSession, createConference } from "./handlers/TwilioHandler";
 
 const PORT = process.env.PORT || 40451;
 
@@ -100,6 +100,65 @@ Bun.serve({
       }
     },
 
+    // API: Create conference call (add owner to call)
+    "/api/create-conference/:streamSid": async (req) => {
+      if (req.method !== "POST") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      const streamSid = req.params.streamSid;
+      if (!streamSid) {
+        return new Response("Missing streamSid", { status: 400 });
+      }
+
+      try {
+        const body = await req.json() as { reason?: string };
+        const reason = body.reason || "User requested human assistance";
+        
+        await createConference(streamSid, reason);
+        
+        console.log(`[API] Conference created for stream ${streamSid}`);
+
+        return new Response(JSON.stringify({
+          success: true,
+          streamSid,
+          message: "Conference call initiated"
+        }), {
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (error: any) {
+        console.error(`[API] Error creating conference for ${streamSid}:`, error);
+        return new Response(JSON.stringify({
+          success: false,
+          error: error.message || "Error creating conference"
+        }), { 
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    },
+
+    // API: Conference status callback (for tracking when participants join/leave)
+    "/api/conference-status": async (req) => {
+      if (req.method !== "POST") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      try {
+        const formData = await req.formData();
+        const event = formData.get('StatusCallbackEvent');
+        const conferenceSid = formData.get('ConferenceSid');
+        const participantLabel = formData.get('ParticipantLabel');
+        
+        console.log(`[Conference] Event: ${event}, Conference: ${conferenceSid}, Participant: ${participantLabel}`);
+        
+        return new Response("OK");
+      } catch (error) {
+        console.error(`[API] Error handling conference status:`, error);
+        return new Response("Error", { status: 500 });
+      }
+    },
+
     // Twilio Gateway: Return TwiML to connect stream
     "/api/twilio-gateway": async (req) => {
       const publicURL = cleanPublicURL(process.env.PUBLIC_URL);
@@ -123,6 +182,11 @@ Bun.serve({
       const isNgrok = publicURL.includes(".ngrok-free.app");
       const wsURL = `wss://${publicURL}${isNgrok ? "" : `:${PORT}`}/twilio-ws`;
 
+      console.log(`[Twilio] Forwarding call to WebSocket: ${wsURL}`);
+
+      // Create TwiML response with media stream
+      // NOTE: When conference mode is activated, this call will be moved to a conference
+      // The stream will reconnect with a new "start" message - this is expected behavior
       const response = new Twilio.twiml.VoiceResponse();
       const connect = response.connect();
       const stream = connect.stream({
@@ -135,8 +199,6 @@ Bun.serve({
       stream.parameter({ name: 'to', value: to });
       stream.parameter({ name: 'fromCity', value: fromCity });
       stream.parameter({ name: 'fromState', value: fromState });
-
-      console.log(`[Twilio] Forwarding call to WebSocket: ${wsURL}`);
 
       return new Response(response.toString(), {
         headers: { "Content-Type": "text/xml" }

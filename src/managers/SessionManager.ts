@@ -2,6 +2,7 @@
  * Session Manager
  * 
  * Manages all active voice agent sessions
+ * Simplified for Option 2: No reconnection handling needed
  */
 
 import { VoiceAgent } from "../core/VoiceAgent";

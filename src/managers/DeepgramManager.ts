@@ -12,15 +12,27 @@ const deepgramClient = createClient(process.env.DEEPGRAM_ACCESS_TOKEN);
 // Track accumulated transcripts per stream
 const transcriptAccumulators = new Map<string, string[]>();
 
-export function createSTT(): LiveClient {
-  return deepgramClient.listen.live({
+export interface TranscriptWithSpeaker {
+  text: string;
+  speaker?: number;
+}
+
+export function createSTT(enableDiarization: boolean = false): LiveClient {
+  const options: any = {
     model: "nova-3",
     encoding: "mulaw",
     sample_rate: 8000,
     interim_results: false, // Only final transcripts
     endpointing: 500, // Wait longer before ending utterance for more natural pauses
     smart_format: false
-  });
+  };
+
+  // Enable diarization when in conference mode
+  if (enableDiarization) {
+    options.diarize = true;
+  }
+
+  return deepgramClient.listen.live(options);
 }
 
 export function createTTS(): SpeakLiveClient {
@@ -31,20 +43,29 @@ export function createTTS(): SpeakLiveClient {
   });
 }
 
-export function setupSTTHandlers(stt: LiveClient, agent: VoiceAgent, streamSid: string): void {
+export function setupSTTHandlers(stt: LiveClient, agent: VoiceAgent, streamSid: string, diarizationEnabled: boolean = false): void {
   // Initialize accumulator for this stream
   transcriptAccumulators.set(streamSid, []);
   
   stt.on(LiveTranscriptionEvents.Open, () => {
-    console.log(`[STT ${streamSid}] Connected`);
+    console.log(`[STT ${streamSid}] Connected${diarizationEnabled ? ' (Diarization enabled)' : ''}`);
   });
 
   stt.on(LiveTranscriptionEvents.Transcript, (data) => {
     const transcript = data.channel?.alternatives?.[0]?.transcript;
+    const words = data.channel?.alternatives?.[0]?.words;
     
     // Log all transcript events to debug what's happening
     if (transcript && transcript.trim()) {
-      console.log(`[STT ${streamSid}] Transcript: is_final=${data.is_final}, speech_final=${data.speech_final}, text="${transcript}"`);
+      // Extract speaker information if available
+      let speaker: number | undefined;
+      if (diarizationEnabled && words && words.length > 0) {
+        // Use the speaker from the first word (they should all be the same speaker in one utterance)
+        speaker = words[0].speaker;
+        console.log(`[STT ${streamSid}] Transcript: is_final=${data.is_final}, speech_final=${data.speech_final}, speaker=${speaker}, text="${transcript}"`);
+      } else {
+        console.log(`[STT ${streamSid}] Transcript: is_final=${data.is_final}, speech_final=${data.speech_final}, text="${transcript}"`);
+      }
     }
     
     // Accumulate final transcripts until speech is complete
@@ -56,13 +77,20 @@ export function setupSTTHandlers(stt: LiveClient, agent: VoiceAgent, streamSid: 
       // When speech is final, send all accumulated text
       if (data.speech_final) {
         const fullTranscript = accumulator.join(' ');
-        console.log(`[STT ${streamSid}] ✅ Processing complete utterance: "${fullTranscript}"`);
+        
+        // Extract speaker if diarization is enabled
+        let speaker: number | undefined;
+        if (diarizationEnabled && words && words.length > 0) {
+          speaker = words[0].speaker;
+        }
+        
+        console.log(`[STT ${streamSid}] ✅ Processing complete utterance${speaker !== undefined ? ` (Speaker ${speaker})` : ''}: "${fullTranscript}"`);
         
         // Clear accumulator for next utterance
         transcriptAccumulators.set(streamSid, []);
         
-        // Send to agent
-        agent.handleTranscript(fullTranscript);
+        // Send to agent with speaker information
+        agent.handleTranscript(fullTranscript, speaker);
       }
     }
   });

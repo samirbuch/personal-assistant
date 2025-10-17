@@ -133,6 +133,29 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent) {
 
   // Only add tools if voiceAgent is provided (after initialization)
   if (voiceAgent) {
+    tools.transferToHuman = tool({
+      description: "Transfer the call to connect the caller directly with a real human (the owner). Use this when the caller requests to speak with a human, or when the situation is too complex for the AI to handle. The AI will gracefully hand off the conversation and disconnect, allowing the caller and owner to continue speaking.",
+      inputSchema: z.object({
+        reason: z.string().describe("Brief reason why the caller is being transferred to a human")
+      }),
+      execute: async ({ reason }) => {
+        console.log(`[LLM Tool] Transferring to human: ${reason}`);
+        try {
+          await voiceAgent.transferToHuman(reason);
+          return { 
+            success: true, 
+            message: "Successfully initiated transfer. You will announce the handoff and then disconnect." 
+          };
+        } catch (error: any) {
+          console.error(`[LLM Tool] Error transferring to human:`, error);
+          return { 
+            success: false, 
+            error: error.message || "Failed to transfer to human" 
+          };
+        }
+      }
+    });
+
     tools.sendDTMF = tool({
       description: "Send DTMF (touch-tone) digits over the phone connection. Use this to navigate phone menus (e.g., 'Press 1 for sales'). Digits can be 0-9, *, or #.",
       inputSchema: z.object({
