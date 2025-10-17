@@ -34,7 +34,7 @@ export async function handleStart(
   });
 
   // Now create LLM agent with tools that reference voiceAgent
-  const agent = createLLMAgent(voiceAgent);
+  const agent = await createLLMAgent(voiceAgent);
   voiceAgent.setAgent(agent);
 
   // Set up handlers

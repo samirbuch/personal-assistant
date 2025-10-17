@@ -18,7 +18,7 @@ export function createSTT(): LiveClient {
     encoding: "mulaw",
     sample_rate: 8000,
     interim_results: false, // Only final transcripts
-    endpointing: 1000, // Wait longer before ending utterance for more natural pauses
+    endpointing: 500, // Wait longer before ending utterance for more natural pauses
     smart_format: false
   });
 }

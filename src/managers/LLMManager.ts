@@ -10,7 +10,10 @@ import { z } from "zod";
 import type { VoiceAgent } from "../core/VoiceAgent";
 import { OutlookManager, type TimeSlot, type CalendarEvent } from "./OutlookManager";
 
-export function createLLMAgent(voiceAgent?: VoiceAgent) {
+const systemPromptURL = new URL("../assets/system-prompt.txt", import.meta.url);
+const systemPrompt = Bun.file(systemPromptURL)
+
+export async function createLLMAgent(voiceAgent?: VoiceAgent) {
   const tools: Record<string, any> = {};
   
   // Initialize Outlook manager (available to all instances)
@@ -153,30 +156,14 @@ export function createLLMAgent(voiceAgent?: VoiceAgent) {
     });
   }
 
+  console.log("System prompt:", await systemPrompt.text())
+
   return new Agent({
     model: anthropic("claude-3-5-haiku-latest"),
-    system: `You are Jordan, a helpful personal assistant for Samir Buch. Today is: ${new Date().toISOString()}
-
-You're helping Samir book appointments by calling businesses on his behalf. The person you're speaking with likely wants to help.
-
-Guidelines:
-- Keep responses VERY brief and natural (like a real phone conversation)
-- Spell out numbers clearly
-- Avoid punctuation that doesn't work in speech: / \\ ( ) [ ] { }
-- Don't use bullet points
-- Samir uses he/him or they/them pronouns
-- Only provide contact info if asked: phone 267-625-3752, email samirjbuch@gmail.com
-- If you notice the conversation is over, use the hangUpCall tool to end the call
-- Before suggesting appointment times, check Samir's calendar availability using getCalendarAvailability
-- After confirming an appointment, create a calendar event using createCalendarEvent
-
-Voicemail Handling:
-- If you detect a voicemail greeting or automated message (listen for "leave a message", "beep", or typical voicemail patterns), wait for the beep. Do NOT hang up until you leave a message.
-- After the beep, leave a brief message: "Hi, this is Jordan calling for Samir Buch. Please call back at 267-625-3752. Thank you."
-- After leaving the message, use the hangUpCall tool to end the call
-- If you hear an automated menu (press 1 for..., press 2 for...), use the sendDTMF tool to navigate
-
-Remember: This is a voice conversation - be conversational and concise.`,
+    system: `
+    ${await systemPrompt.text()}
+    Today's date is ${new Date().toISOString()}
+    `,
     tools,
     stopWhen: stepCountIs(20)
   });

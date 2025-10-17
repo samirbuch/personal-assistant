@@ -12,10 +12,8 @@ import { handleStart, handleMedia, handleStop, getSession } from "./handlers/Twi
 const PORT = process.env.PORT || 40451;
 
 console.log(`
-╔═══════════════════════════════════════╗
-║   Personal Assistant Voice Agent      ║
-║   Port: ${PORT}                     ║
-╚═══════════════════════════════════════╝
+Personal Assistant Voice Agent
+Port: ${PORT}
 `);
 
 const twilioClient = Twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
@@ -28,7 +26,7 @@ function cleanPublicURL(url: string | undefined): string | null {
 
 Bun.serve({
   port: PORT,
-  
+
   routes: {
     // API: Initiate outbound call
     "/api/calls/:number": async (req) => {
@@ -87,12 +85,12 @@ Bun.serve({
       try {
         const call = await twilioClient.calls(callSid).update({ status: 'completed' });
         console.log(`[API] Hung up call ${callSid} for stream ${streamSid}`);
-        
-        return new Response(JSON.stringify({ 
-          success: true, 
-          callSid, 
+
+        return new Response(JSON.stringify({
+          success: true,
+          callSid,
           streamSid,
-          status: call.status 
+          status: call.status
         }), {
           headers: { "Content-Type": "application/json" }
         });
@@ -130,7 +128,7 @@ Bun.serve({
   // Regular HTTP requests
   fetch(req, server) {
     const url = new URL(req.url);
-    
+
     // WebSocket upgrade
     if (url.pathname === "/twilio-ws") {
       const upgraded = server.upgrade(req);
@@ -164,19 +162,19 @@ Bun.serve({
           case "start":
             await handleStart(msg, ws);
             break;
-          
+
           case "media":
             await handleMedia(msg);
             break;
-          
+
           case "stop":
             handleStop(msg);
             break;
-          
+
           case "connected":
             console.log("[WebSocket] Twilio connected");
             break;
-          
+
           default:
             console.log(`[WebSocket] Unknown event: ${msg.event}`);
         }
