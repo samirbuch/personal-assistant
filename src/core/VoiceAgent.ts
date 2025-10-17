@@ -170,23 +170,94 @@ export class VoiceAgent {
           break;
         }
 
-        // Handle different chunk types
-        if (chunk.type === 'text-delta') {
-          // Text content - send immediately to TTS
-          const textDelta = chunk.text;
-          this.conversation.appendToAssistantMessage(textDelta);
-          this.tts.sendText(textDelta);
-          console.log(`[VoiceAgent] 📝 Text delta: "${textDelta}"`);
-        } 
-        else if (chunk.type === 'tool-call') {
-          // Tool is being called - log it but don't send to TTS
-          console.log(`[VoiceAgent] 🔧 Tool call: ${chunk.toolName}`);
+        // Handle different chunk types based on TextStreamPart
+        switch (chunk.type) {
+          case 'text-delta':
+            // Text content - send immediately to TTS
+            this.conversation.appendToAssistantMessage(chunk.text);
+            this.tts.sendText(chunk.text);
+            console.log(`[VoiceAgent] 📝 Text: "${chunk.text}"`);
+            break;
+
+          case 'text-start':
+            console.log(`[VoiceAgent] 📝 Text started (id: ${chunk.id})`);
+            break;
+
+          case 'text-end':
+            console.log(`[VoiceAgent] 📝 Text ended (id: ${chunk.id})`);
+            break;
+
+          case 'reasoning-delta':
+            // Reasoning text - could optionally send to TTS or just log
+            console.log(`[VoiceAgent] 🤔 Reasoning: "${chunk.text}"`);
+            break;
+
+          case 'reasoning-start':
+            console.log(`[VoiceAgent] 🤔 Reasoning started`);
+            break;
+
+          case 'reasoning-end':
+            console.log(`[VoiceAgent] 🤔 Reasoning ended`);
+            break;
+
+          case 'tool-call':
+            console.log(`[VoiceAgent] 🔧 Tool call: ${chunk.toolName} (id: ${chunk.toolCallId})`);
+            break;
+
+          case 'tool-result':
+            console.log(`[VoiceAgent] ✅ Tool result: ${chunk.toolName}`);
+            break;
+
+          case 'tool-error':
+            console.log(`[VoiceAgent] ❌ Tool error: ${chunk.toolName} - ${chunk.error}`);
+            break;
+
+          case 'tool-input-start':
+            console.log(`[VoiceAgent] 🔧 Tool input starting: ${chunk.toolName}`);
+            break;
+
+          case 'tool-input-delta':
+            console.log(`[VoiceAgent] 🔧 Tool input delta: ${chunk.delta}`);
+            break;
+
+          case 'tool-input-end':
+            console.log(`[VoiceAgent] 🔧 Tool input complete`);
+            break;
+
+          case 'start-step':
+            console.log(`[VoiceAgent] 🚀 Step started`);
+            break;
+
+          case 'finish-step':
+            console.log(`[VoiceAgent] 🏁 Step finished (reason: ${chunk.finishReason})`);
+            break;
+
+          case 'start':
+            console.log(`[VoiceAgent] ▶️  Stream started`);
+            break;
+
+          case 'finish':
+            console.log(`[VoiceAgent] ✔️  Stream finished (reason: ${chunk.finishReason})`);
+            break;
+
+          case 'error':
+            console.error(`[VoiceAgent] ❌ Stream error:`, chunk.error);
+            break;
+
+          case 'abort':
+            console.log(`[VoiceAgent] ⏹️  Stream aborted`);
+            break;
+
+          case 'source':
+          case 'file':
+          case 'raw':
+            // These types exist but we don't need to handle them for voice
+            break;
+
+          default:
+            // This should never happen due to TypeScript exhaustive checking
+            console.log(`[VoiceAgent] ⚠️  Unhandled chunk type:`, chunk);
         }
-        else if (chunk.type === 'tool-result') {
-          // Tool result received - log it but don't send to TTS
-          console.log(`[VoiceAgent] ✅ Tool result: ${chunk.toolName}`);
-        }
-        // Other chunk types (step-start, step-finish, etc.) are ignored
       }
 
       // Flush TTS
