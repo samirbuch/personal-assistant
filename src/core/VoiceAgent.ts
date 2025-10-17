@@ -66,17 +66,12 @@ export class VoiceAgent {
    * Handle incoming audio from user
    */
   public async handleIncomingAudio(mulawBase64: string): Promise<void> {
-    // Send to STT
+    // Send to STT always
     const buffer = Uint8Array.fromBase64(mulawBase64);
     this.stt.send(buffer.buffer);
 
-    // TODO: INTERRUPTION DISABLED FOR TESTING
-    // Check for interruption ONLY when speaking
-    // if (this.stateMachine.is(AgentState.SPEAKING)) {
-    //   if (this.interruption.shouldInterrupt(mulawBase64)) {
-    //     this.handleInterruption();
-    //   }
-    // }
+    // Don't use audio-based interruption detection - rely on transcript-based only
+    // This avoids false positives from user's own trailing audio
   }
 
   /**
@@ -85,16 +80,25 @@ export class VoiceAgent {
   public async handleTranscript(transcript: string): Promise<void> {
     const currentState = this.stateMachine.getState();
     
-    // Accept transcripts in LISTENING or SPEAKING states
-    // During SPEAKING, this naturally becomes an interruption
-    if (currentState === AgentState.LISTENING || currentState === AgentState.SPEAKING) {
-      console.log(`[VoiceAgent] User said: "${transcript}" (state: ${currentState})`);
+    // If we receive a transcript while SPEAKING, that's an interruption
+    if (currentState === AgentState.SPEAKING) {
+      console.log(`[VoiceAgent] User interrupted with: "${transcript}"`);
+      this.handleInterruption();
+      
+      // Add to conversation
+      this.conversation.addUserMessage(transcript);
 
-      // If we're speaking, this is an interruption - handle it first
-      if (currentState === AgentState.SPEAKING) {
-        console.log(`[VoiceAgent] Transcript received while speaking - treating as interruption`);
-        this.handleInterruption();
-      }
+      // Transition to thinking
+      this.stateMachine.transition(AgentState.THINKING, "Processing user input");
+
+      // Generate response
+      await this.generateResponse();
+      return;
+    }
+    
+    // Accept transcripts in LISTENING state
+    if (currentState === AgentState.LISTENING) {
+      console.log(`[VoiceAgent] User said: "${transcript}"`);
 
       // Add to conversation
       this.conversation.addUserMessage(transcript);
@@ -106,7 +110,7 @@ export class VoiceAgent {
       await this.generateResponse();
     } else {
       // Ignore transcripts during THINKING or ERROR states
-      console.log(`[VoiceAgent] Ignoring transcript - state is ${currentState}`);
+      console.log(`[VoiceAgent] Ignoring transcript "${transcript}" - state is ${currentState}`);
     }
   }
 
@@ -114,29 +118,32 @@ export class VoiceAgent {
    * Handle interruption - stop speaking immediately
    */
   private handleInterruption(): void {
-    // TODO: INTERRUPTION DISABLED FOR TESTING
-    console.log(`[VoiceAgent] 🚨 INTERRUPTION DETECTED (DISABLED)`);
-    return;
+    console.log(`[VoiceAgent] 🚨 INTERRUPTION DETECTED`);
 
-    // console.log(`[VoiceAgent] 🚨 INTERRUPTION DETECTED`);
-    //
-    // // Transition to interrupted state
-    // this.stateMachine.transition(AgentState.INTERRUPTED, "User interrupted");
-    //
-    // // Stop audio IMMEDIATELY
-    // this.audio.stopImmediately();
-    //
-    // // Abort LLM generation
-    // if (this.abortController) {
-    //   this.abortController.abort("interrupted");
-    //   this.abortController = null;
-    // }
-    //
-    // // Save partial response
-    // this.conversation.handleInterruption();
-    //
-    // // Return to listening
-    // this.stateMachine.transition(AgentState.LISTENING, "Ready for new input");
+    // Transition to interrupted state
+    this.stateMachine.transition(AgentState.INTERRUPTED, "User interrupted");
+
+    // Stop audio IMMEDIATELY
+    this.audio.stopImmediately();
+
+    // Abort LLM generation
+    if (this.abortController) {
+      this.abortController.abort("interrupted");
+      this.abortController = null;
+    }
+
+    // Clear TTS queue - stop any pending audio
+    try {
+      this.tts.clear();
+    } catch (error) {
+      // Ignore errors from clearing TTS
+    }
+
+    // Save partial response
+    this.conversation.handleInterruption();
+
+    // Return to listening
+    this.stateMachine.transition(AgentState.LISTENING, "Ready for new input");
   }
 
   /**
@@ -172,12 +179,8 @@ export class VoiceAgent {
         this.tts.flush();
         this.conversation.completeAssistantMessage();
         
-        // Wait a moment for final audio, then transition to listening
-        setTimeout(() => {
-          if (this.stateMachine.is(AgentState.SPEAKING)) {
-            this.stateMachine.transition(AgentState.LISTENING, "Response complete");
-          }
-        }, 500);
+        // Don't transition here - let handleTTSFlushed() handle the transition
+        // This keeps us in SPEAKING state so interruptions can still be detected
       }
 
     } catch (error: any) {
@@ -211,10 +214,13 @@ export class VoiceAgent {
     console.log(`[VoiceAgent] TTS flushed - all audio sent`);
     this.audioInFlight = false;
     
-    // If we're done speaking and no audio in flight, we can safely disable audio
-    if (!this.stateMachine.is(AgentState.SPEAKING)) {
-      this.audio.disable();
+    // Transition to LISTENING now that audio is complete
+    if (this.stateMachine.is(AgentState.SPEAKING)) {
+      this.stateMachine.transition(AgentState.LISTENING, "Response complete");
     }
+    
+    // Disable audio gate
+    this.audio.disable();
   }
 
   /**
