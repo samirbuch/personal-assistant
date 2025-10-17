@@ -29,6 +29,52 @@ const tools = {
 
 }
 
+function handleInterrupt(streamSid: string, utteranceUntilInterrupt: string) {
+  const session = callSessions.get(streamSid);
+  if (!session) {
+    console.error(`No session found for streamSid: ${streamSid}`);
+    return;
+  }
+
+  const conversation = session.conversation;
+  let updatedConversation = [...conversation];
+  const interruptedIndex = updatedConversation.findLastIndex(
+    (message) =>
+      message.role === "assistant" &&
+      message.content &&
+      typeof message.content === "string" &&
+      message.content.includes(utteranceUntilInterrupt)
+  );
+
+  if (interruptedIndex !== -1) {
+    const interruptedMessage = updatedConversation[interruptedIndex];
+    if (!interruptedMessage) return;
+
+    const content = typeof interruptedMessage.content === "string"
+      ? interruptedMessage.content
+      : "";
+
+    const interruptPosition = content.indexOf(utteranceUntilInterrupt);
+    const truncatedContent = content.substring(
+      0,
+      interruptPosition + utteranceUntilInterrupt.length
+    );
+
+    updatedConversation[interruptedIndex] = {
+      ...interruptedMessage,
+      content: truncatedContent,
+    } as ModelMessage;
+
+    updatedConversation = updatedConversation.filter(
+      (message, index) =>
+        !(index > interruptedIndex && message.role === "assistant")
+    );
+  }
+
+  session.conversation = updatedConversation;
+  callSessions.set(streamSid, session);
+}
+
 Bun.serve({
   port: PORT,
   routes: {
