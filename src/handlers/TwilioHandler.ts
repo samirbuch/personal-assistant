@@ -16,22 +16,26 @@ export async function handleStart(
   message: TwilioWebsocket.StartMessage,
   ws: any
 ): Promise<void> {
-  const { streamSid } = message;
-  console.log(`\n[Twilio] ═══ CALL START ═══ ${streamSid}`);
+  const { streamSid, start } = message;
+  const { callSid } = start;
+  console.log(`\n[Twilio] ═══ CALL START ═══ ${streamSid} (Call: ${callSid})`);
 
   // Create Deepgram connections
   const stt = createSTT();
   const tts = createTTS();
-  const agent = createLLMAgent();
 
-  // Create voice agent
+  // Create voice agent first (without LLM agent)
   const voiceAgent = new VoiceAgent({
     ws,
     streamSid,
+    callSid,
     stt,
-    tts,
-    agent
+    tts
   });
+
+  // Now create LLM agent with tools that reference voiceAgent
+  const agent = createLLMAgent(voiceAgent);
+  voiceAgent.setAgent(agent);
 
   // Set up handlers
   setupSTTHandlers(stt, voiceAgent, streamSid);
@@ -69,4 +73,12 @@ export function handleStop(
 
 export function getSessionCount(): number {
   return sessions.getCount();
+}
+
+export function getSession(streamSid: string): VoiceAgent | undefined {
+  return sessions.get(streamSid);
+}
+
+export function getSessionManager(): SessionManager {
+  return sessions;
 }

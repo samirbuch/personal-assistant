@@ -7,7 +7,7 @@
 import Twilio from "twilio";
 import * as Bun from "bun";
 import { TwilioWebsocket } from "../lib/TwilioWebsocketTypes";
-import { handleStart, handleMedia, handleStop } from "./handlers/TwilioHandler";
+import { handleStart, handleMedia, handleStop, getSession } from "./handlers/TwilioHandler";
 
 const PORT = process.env.PORT || 40451;
 
@@ -63,6 +63,42 @@ Bun.serve({
       } catch (error) {
         console.error("[API] Error creating call:", error);
         return new Response("Error creating call", { status: 500 });
+      }
+    },
+
+    // API: Hang up active call
+    "/api/hangup/:streamSid": async (req) => {
+      if (req.method !== "POST") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      const streamSid = req.params.streamSid;
+      if (!streamSid) {
+        return new Response("Missing streamSid", { status: 400 });
+      }
+
+      const session = getSession(streamSid);
+      if (!session) {
+        return new Response("Session not found", { status: 404 });
+      }
+
+      const callSid = session.getCallSid();
+
+      try {
+        const call = await twilioClient.calls(callSid).update({ status: 'completed' });
+        console.log(`[API] Hung up call ${callSid} for stream ${streamSid}`);
+        
+        return new Response(JSON.stringify({ 
+          success: true, 
+          callSid, 
+          streamSid,
+          status: call.status 
+        }), {
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (error) {
+        console.error(`[API] Error hanging up call ${callSid}:`, error);
+        return new Response("Error hanging up call", { status: 500 });
       }
     },
 

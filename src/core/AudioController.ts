@@ -10,7 +10,7 @@ import type { TwilioWebsocket } from "../../lib/TwilioWebsocketTypes";
 
 export class AudioController {
   private enabled: boolean = false;
-  private ws: Bun.ServerWebSocket;
+  public ws: Bun.ServerWebSocket; // Public for DTMF access
   private streamSid: string;
   private lastClearTime: number = 0;
 

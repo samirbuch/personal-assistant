@@ -16,28 +16,33 @@ import { InterruptionDetector } from "./InterruptionDetector";
 export interface VoiceAgentConfig {
   ws: Bun.ServerWebSocket;
   streamSid: string;
+  callSid: string;
   stt: LiveClient;
   tts: SpeakLiveClient;
-  agent: Agent<{}, never, never>;
+  agent?: Agent<{}, never, never>; // Optional - can be set later
 }
 
 export class VoiceAgent {
   private streamSid: string;
+  private callSid: string;
   private stateMachine: VoiceAgentStateMachine;
   private audio: AudioController;
   private conversation: ConversationManager;
   private interruption: InterruptionDetector;
   private stt: LiveClient;
   private tts: SpeakLiveClient;
-  private agent: Agent<{}, never, never>;
+  private agent!: Agent<{}, never, never>; // Will be set after construction
   private abortController: AbortController | null = null;
   private audioInFlight: boolean = false; // Track if TTS is still sending audio
 
   constructor(config: VoiceAgentConfig) {
     this.streamSid = config.streamSid;
+    this.callSid = config.callSid;
     this.stt = config.stt;
     this.tts = config.tts;
-    this.agent = config.agent;
+    if (config.agent) {
+      this.agent = config.agent;
+    }
 
     // Initialize core components
     this.stateMachine = new VoiceAgentStateMachine();
@@ -78,22 +83,31 @@ export class VoiceAgent {
    * Handle user transcript from STT
    */
   public async handleTranscript(transcript: string): Promise<void> {
-    // Only process transcripts when listening
-    if (!this.stateMachine.is(AgentState.LISTENING)) {
-      console.log(`[VoiceAgent] Ignoring transcript - state is ${this.stateMachine.getState()}`);
-      return;
+    const currentState = this.stateMachine.getState();
+    
+    // Accept transcripts in LISTENING or SPEAKING states
+    // During SPEAKING, this naturally becomes an interruption
+    if (currentState === AgentState.LISTENING || currentState === AgentState.SPEAKING) {
+      console.log(`[VoiceAgent] User said: "${transcript}" (state: ${currentState})`);
+
+      // If we're speaking, this is an interruption - handle it first
+      if (currentState === AgentState.SPEAKING) {
+        console.log(`[VoiceAgent] Transcript received while speaking - treating as interruption`);
+        this.handleInterruption();
+      }
+
+      // Add to conversation
+      this.conversation.addUserMessage(transcript);
+
+      // Transition to thinking
+      this.stateMachine.transition(AgentState.THINKING, "Processing user input");
+
+      // Generate response
+      await this.generateResponse();
+    } else {
+      // Ignore transcripts during THINKING or ERROR states
+      console.log(`[VoiceAgent] Ignoring transcript - state is ${currentState}`);
     }
-
-    console.log(`[VoiceAgent] User said: "${transcript}"`);
-
-    // Add to conversation
-    this.conversation.addUserMessage(transcript);
-
-    // Transition to thinking
-    this.stateMachine.transition(AgentState.THINKING, "Processing user input");
-
-    // Generate response
-    await this.generateResponse();
   }
 
   /**
@@ -253,5 +267,61 @@ export class VoiceAgent {
    */
   public getConversation() {
     return this.conversation;
+  }
+
+  /**
+   * Set the LLM agent (called after construction)
+   */
+  public setAgent(agent: Agent<{}, never, never>): void {
+    this.agent = agent;
+  }
+
+  /**
+   * Get call SID
+   */
+  public getCallSid(): string {
+    return this.callSid;
+  }
+
+  /**
+   * Send DTMF tones over the connection
+   */
+  public sendDTMF(digits: string): void {
+    console.log(`[VoiceAgent] Sending DTMF: ${digits}`);
+    
+    // Send each digit as a separate message
+    for (const digit of digits) {
+      const dtmfMessage = {
+        event: "dtmf",
+        streamSid: this.streamSid,
+        dtmf: {
+          digit: digit
+        }
+      };
+      
+      this.audio["ws"].send(JSON.stringify(dtmfMessage));
+    }
+  }
+
+  /**
+   * Hang up the call
+   */
+  public async hangUp(): Promise<void> {
+    console.log(`[VoiceAgent] Hanging up call ${this.callSid}`);
+    
+    // Use the hangup API endpoint
+    const publicURL = process.env.PUBLIC_URL?.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const port = process.env.PORT || 40451;
+    const isNgrok = publicURL?.includes(".ngrok-free.app");
+    const url = `http://${publicURL}${isNgrok ? "" : `:${port}`}/api/hangup/${this.streamSid}`;
+    
+    try {
+      const response = await fetch(url, { method: "POST" });
+      if (!response.ok) {
+        console.error(`[VoiceAgent] Failed to hang up: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error(`[VoiceAgent] Error hanging up:`, error);
+    }
   }
 }
