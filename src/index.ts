@@ -1,318 +1,159 @@
+/**
+ * Personal Assistant Voice Agent Server
+ * 
+ * Clean, simple architecture with proper state management
+ */
+
 import Twilio from "twilio";
 import * as Bun from "bun";
-import { createClient, LiveTranscriptionEvents, LiveTTSEvents, LiveClient, SpeakLiveClient } from "@deepgram/sdk";
-import cleanPublicURL from "./util/cleanPublicURL";
 import { TwilioWebsocket } from "../lib/TwilioWebsocketTypes";
-
-import { Experimental_Agent as Agent, stepCountIs, tool, type ModelMessage } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { handleStart, handleMedia, handleStop } from "./handlers/TwilioHandler";
 
 const PORT = process.env.PORT || 40451;
 
-console.log(`[${new Date().toISOString()}] Hello via Bun!`);
+console.log(`
+╔═══════════════════════════════════════╗
+║   Personal Assistant Voice Agent      ║
+║   Port: ${PORT}                     ║
+╚═══════════════════════════════════════╝
+`);
 
-interface CallSession {
-  ws: Bun.ServerWebSocket;
-  deepgramSTT: LiveClient;
-  deepgramTTS: SpeakLiveClient;
-  conversation: ModelMessage[];
-  agent: Agent<{}, never, never>;
-  abortController: AbortController
-}
+const twilioClient = Twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
 
-const callSessions = new Map<string, CallSession>();
-
-const client = Twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
-const deepgramClient = createClient(process.env.DEEPGRAM_ACCESS_TOKEN);
-
-const tools = {
-
-}
-
-function handleInterrupt(streamSid: string, utteranceUntilInterrupt: string) {
-  const session = callSessions.get(streamSid);
-  if (!session) {
-    console.error(`No session found for streamSid: ${streamSid}`);
-    return;
-  }
-
-  const conversation = session.conversation;
-  let updatedConversation = [...conversation];
-  const interruptedIndex = updatedConversation.findLastIndex(
-    (message) =>
-      message.role === "assistant" &&
-      message.content &&
-      typeof message.content === "string" &&
-      message.content.includes(utteranceUntilInterrupt)
-  );
-
-  if (interruptedIndex !== -1) {
-    const interruptedMessage = updatedConversation[interruptedIndex];
-    if (!interruptedMessage) return;
-
-    const content = typeof interruptedMessage.content === "string"
-      ? interruptedMessage.content
-      : "";
-
-    const interruptPosition = content.indexOf(utteranceUntilInterrupt);
-    const truncatedContent = content.substring(
-      0,
-      interruptPosition + utteranceUntilInterrupt.length
-    );
-
-    updatedConversation[interruptedIndex] = {
-      ...interruptedMessage,
-      content: truncatedContent,
-    } as ModelMessage;
-
-    updatedConversation = updatedConversation.filter(
-      (message, index) =>
-        !(index > interruptedIndex && message.role === "assistant")
-    );
-  }
-
-  session.conversation = updatedConversation;
-  callSessions.set(streamSid, session);
+// Utility to clean public URL
+function cleanPublicURL(url: string | undefined): string | null {
+  if (!url) return null;
+  return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
 }
 
 Bun.serve({
   port: PORT,
+  
   routes: {
-    "/api/calls/:number": async req => {
+    // API: Initiate outbound call
+    "/api/calls/:number": async (req) => {
       if (req.method !== "POST") {
-        return new Response("Error 405: Method not allowed", { status: 405 });
+        return new Response("Method not allowed", { status: 405 });
       }
 
       const from = process.env.TWILIO_PHONE_NUMBER;
-      if (!from) return new Response("Error 500: Missing TWILIO_PHONE_NUMBER", { status: 500 });
+      if (!from) {
+        return new Response("Missing TWILIO_PHONE_NUMBER", { status: 500 });
+      }
 
       const publicURL = cleanPublicURL(process.env.PUBLIC_URL);
-      if (!publicURL) return new Response("Error 500: Missing or malformed PUBLIC_URL", { status: 500 });
+      if (!publicURL) {
+        return new Response("Missing or invalid PUBLIC_URL", { status: 500 });
+      }
 
       const isNgrok = publicURL.includes(".ngrok-free.app");
-      const url = `http://${publicURL}${isNgrok ? "" : `:${PORT}`}/api/twilio-gateway`;
+      const callbackURL = `http://${publicURL}${isNgrok ? "" : `:${PORT}`}/api/twilio-gateway`;
 
-      console.log(`Calling ${from}`);
-      const call = await client.calls.create({
-        from,
-        to: req.params.number,
-        url: url
-      });
+      try {
+        const call = await twilioClient.calls.create({
+          from,
+          to: req.params.number,
+          url: callbackURL
+        });
 
-      console.log("Call!", call);
-
-      return new Response(JSON.stringify(call.toJSON()));
+        console.log(`[API] Initiated call to ${req.params.number}: ${call.sid}`);
+        return new Response(JSON.stringify(call.toJSON()), {
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (error) {
+        console.error("[API] Error creating call:", error);
+        return new Response("Error creating call", { status: 500 });
+      }
     },
-    "/api/twilio-gateway": async req => {
+
+    // Twilio Gateway: Return TwiML to connect stream
+    "/api/twilio-gateway": async (req) => {
       const publicURL = cleanPublicURL(process.env.PUBLIC_URL);
-      if (!publicURL) return new Response("Error 500: Missing or malformed PUBLIC_URL", { status: 500 });
+      if (!publicURL) {
+        return new Response("Missing or invalid PUBLIC_URL", { status: 500 });
+      }
 
       const isNgrok = publicURL.includes(".ngrok-free.app");
-      const ws = `wss://${publicURL}${isNgrok ? "" : `:${PORT}`}/twilio-ws`;
+      const wsURL = `wss://${publicURL}${isNgrok ? "" : `:${PORT}`}/twilio-ws`;
 
       const response = new Twilio.twiml.VoiceResponse();
       const connect = response.connect();
       connect.stream({
-        name: "Inbound Audio Stream",
-        url: ws
+        name: "Voice Agent Stream",
+        url: wsURL
       });
-      console.log("Forwarding twilio call stream to:", ws);
 
-      return new Response(
-        response.toString(),
-        {
-          headers: {
-            "Content-Type": "text/xml"
-          }
-        }
-      );
+      console.log(`[Twilio] Forwarding call to WebSocket: ${wsURL}`);
+
+      return new Response(response.toString(), {
+        headers: { "Content-Type": "text/xml" }
+      });
     }
   },
 
+  // Regular HTTP requests
   fetch(req, server) {
     const url = new URL(req.url);
-    console.log(url);
+    
+    // WebSocket upgrade
     if (url.pathname === "/twilio-ws") {
       const upgraded = server.upgrade(req);
       if (!upgraded) {
-        return new Response("Upgrade failed", { status: 400 });
+        return new Response("WebSocket upgrade failed", { status: 400 });
       }
+      return; // WebSocket takes over
     }
-    // return new Response("Hello World");
+
+    // Health check
+    if (url.pathname === "/health") {
+      return new Response(JSON.stringify({ status: "ok", port: PORT }), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    return new Response("Not found", { status: 404 });
   },
+
+  // WebSocket handlers
   websocket: {
     open(ws) {
-      console.log("Websocket connection opened!");
+      console.log("[WebSocket] Connection established");
     },
-    message(ws, message) {
-      const json: TwilioWebsocket.Message = JSON.parse(message as string);
 
-      switch (json.event) {
-        case "start": {
-          console.log("START EVENT:", json);
+    async message(ws, message) {
+      try {
+        const msg: TwilioWebsocket.Message = JSON.parse(message as string);
 
-          // Create dedicated Deepgram connections for this call
-          const deepgramSTT = deepgramClient.listen.live({
-            model: "nova-3",
-            encoding: "mulaw",
-            sample_rate: 8000,
-            interim_results: true
-          });
-
-          const deepgramTTS = deepgramClient.speak.live({
-            model: "aura-2-thalia-en",
-            encoding: "mulaw",
-            sample_rate: 8000
-          });
-
-          const abortController = new AbortController();
-
-          const agent = new Agent({
-            model: anthropic("claude-3-5-haiku-latest"),
-            system: `
-            You are a helpful haircut scheduling assistant named Jordan. You work for your client, Samir Buch. 
-            He uses he/him or they/them pronouns.
-            Upon request, his phone number is 267-625-3752, and his preferred email is samirjbuch@gmail.com.
-            Please note that your responses will be converted into audio, so take extra care to: spell out numbers, and avoid using punctuation that doesn't translate well into speech (including but not limited to slashes, brackets, braces, parentheses, or bullet points).
-            Please keep all responses very brief.
-            `,
-            tools,
-            stopWhen: stepCountIs(20),
-            abortSignal: abortController.signal
-          });
-
-          // Create session for this call
-          const session: CallSession = {
-            ws,
-            deepgramSTT,
-            deepgramTTS,
-            conversation: [],
-            agent,
-            abortController
-          };
-
-          callSessions.set(json.streamSid, session);
-
-          // Set up STT event handlers for this specific call
-          deepgramSTT.on(LiveTranscriptionEvents.Open, () => {
-            console.log(`[${json.streamSid}] Deepgram STT ready`);
-          });
-
-          deepgramSTT.on(LiveTranscriptionEvents.Transcript, async (data) => {
-            // console.log(`[${json.streamSid}] Transcript:`,
-            //   // data.is_final,
-            //   // data.speech_final,
-            //   data.channel?.alternatives?.[0]?.transcript
-            // );
-
-            // Now we can safely associate this transcript with the correct call
-            if (data.is_final && data.speech_final) {
-              console.log(`[${json.streamSid}] Transcript: ${data.channel?.alternatives?.[0]?.transcript}`)
-              const transcript = data.channel?.alternatives?.[0]?.transcript;
-              if (transcript) {
-                session.conversation.push({
-                  role: "user",
-                  content: transcript
-                });
-
-                console.log(`[${json.streamSid}] Conversation:`, session.conversation);
-
-                // Stream text back from LLM
-                const result = agent.stream({
-                  prompt: session.conversation
-                });
-
-                let fullText = ""
-                // Stream the streamed text to deepgram TTS
-                for await (const chunk of result.textStream) {
-                  console.log(chunk);
-                  deepgramTTS.sendText(chunk);
-                  fullText += chunk;
-                }
-                // and flush when all chunks are done sending
-                deepgramTTS.flush();
-                session.conversation.push({
-                  role: "assistant",
-                  content: fullText
-                })
-              }
-            }
-          });
-
-          deepgramSTT.on(LiveTranscriptionEvents.Error, (error) => {
-            console.error(`[${json.streamSid}] STT Error:`, error);
-          });
-
-          deepgramSTT.on(LiveTranscriptionEvents.Close, () => {
-            console.log(`[${json.streamSid}] STT connection closed`);
-            session.abortController.abort();
-          });
-
-          // Set up TTS event handlers for this specific call
-          deepgramTTS.on(LiveTTSEvents.Open, () => {
-            console.log(`[${json.streamSid}] Deepgram TTS ready`);
-          });
-
-          deepgramTTS.on(LiveTTSEvents.Audio, (audio: Uint8Array) => {
-            // console.log(`[${json.streamSid}] Received TTS audio:`, audio.byteLength, "bytes");
-
-            // Convert the mulaw audio to base64
-            const b64 = audio.toBase64();
-            const msg: TwilioWebsocket.Sendable.MediaMessage = {
-              event: "media",
-              streamSid: json.streamSid,
-              media: { payload: b64 }
-            };
-            session.ws.send(JSON.stringify(msg));
-          });
-
-          deepgramTTS.on(LiveTTSEvents.Error, (error) => {
-            console.error(`[${json.streamSid}] TTS Error:`, error);
-          });
-
-          deepgramTTS.on(LiveTTSEvents.Close, () => {
-            console.log(`[${json.streamSid}] TTS connection closed`);
-          });
-
-          break;
-        }
-        case "media": {
-          const session = callSessions.get(json.streamSid);
-          if (!session) {
-            console.error(`No session found for streamSid: ${json.streamSid}`);
+        switch (msg.event) {
+          case "start":
+            await handleStart(msg, ws);
             break;
-          }
-
-          // Send audio to Deepgram STT for this specific call
-          const base64ToUint8Array = Uint8Array.fromBase64(json.media.payload);
-          session.deepgramSTT.send(base64ToUint8Array.buffer);
-
-          // // Echo back to user
-          // const msg: TwilioWebsocket.Sendable.MediaMessage = {
-          //   event: "media",
-          //   streamSid: json.streamSid,
-          //   media: { payload: json.media.payload }
-          // }
-          // ws.send(JSON.stringify(msg));
-
-          break;
+          
+          case "media":
+            await handleMedia(msg);
+            break;
+          
+          case "stop":
+            handleStop(msg);
+            break;
+          
+          case "connected":
+            console.log("[WebSocket] Twilio connected");
+            break;
+          
+          default:
+            console.log(`[WebSocket] Unknown event: ${msg.event}`);
         }
-
-        case "stop": {
-          console.log(`[${json.streamSid}] User hung up!`);
-          const session = callSessions.get(json.streamSid);
-
-          if (session) {
-            // Clean up Deepgram connections
-            session.deepgramSTT.requestClose();
-            session.deepgramTTS.requestClose();
-            callSessions.delete(json.streamSid);
-            session.abortController.abort();
-          }
-
-          break;
-        }
+      } catch (error) {
+        console.error("[WebSocket] Error handling message:", error);
       }
+    },
+
+    close(ws) {
+      console.log("[WebSocket] Connection closed");
     }
   }
-})
+});
+
+console.log(`✅ Server running on port ${PORT}`);
+console.log(`📞 Ready to handle voice calls\n`);
