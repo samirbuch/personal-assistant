@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.31",
+    "@azure/identity": "^4.13.0",
     "@azure/msal-node": "^3.8.0",
     "@deepgram/sdk": "^4.11.2",
     "@microsoft/microsoft-graph-client": "^3.0.7",
