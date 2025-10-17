@@ -162,16 +162,31 @@ export class VoiceAgent {
       this.stateMachine.transition(AgentState.SPEAKING, "Generating response");
       this.conversation.startAssistantMessage();
 
-      // Stream text to TTS
-      for await (const chunk of result.textStream) {
+      // Use fullStream to get both text deltas AND tool calls as they happen
+      for await (const chunk of result.fullStream) {
         // Check if we're still speaking (could have been interrupted)
         if (!this.stateMachine.is(AgentState.SPEAKING)) {
           console.log(`[VoiceAgent] LLM stream cancelled`);
           break;
         }
 
-        this.conversation.appendToAssistantMessage(chunk);
-        this.tts.sendText(chunk);
+        // Handle different chunk types
+        if (chunk.type === 'text-delta') {
+          // Text content - send immediately to TTS
+          const textDelta = chunk.text;
+          this.conversation.appendToAssistantMessage(textDelta);
+          this.tts.sendText(textDelta);
+          console.log(`[VoiceAgent] 📝 Text delta: "${textDelta}"`);
+        } 
+        else if (chunk.type === 'tool-call') {
+          // Tool is being called - log it but don't send to TTS
+          console.log(`[VoiceAgent] 🔧 Tool call: ${chunk.toolName}`);
+        }
+        else if (chunk.type === 'tool-result') {
+          // Tool result received - log it but don't send to TTS
+          console.log(`[VoiceAgent] ✅ Tool result: ${chunk.toolName}`);
+        }
+        // Other chunk types (step-start, step-finish, etc.) are ignored
       }
 
       // Flush TTS
