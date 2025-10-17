@@ -9,13 +9,16 @@ import type { VoiceAgent } from "../core/VoiceAgent";
 
 const deepgramClient = createClient(process.env.DEEPGRAM_ACCESS_TOKEN);
 
+// Track accumulated transcripts per stream
+const transcriptAccumulators = new Map<string, string[]>();
+
 export function createSTT(): LiveClient {
   return deepgramClient.listen.live({
     model: "nova-3",
     encoding: "mulaw",
     sample_rate: 8000,
     interim_results: false, // Only final transcripts
-    endpointing: 300, // End utterance after 300ms of silence
+    endpointing: 1000, // Wait longer before ending utterance for more natural pauses
     smart_format: false
   });
 }
@@ -29,6 +32,9 @@ export function createTTS(): SpeakLiveClient {
 }
 
 export function setupSTTHandlers(stt: LiveClient, agent: VoiceAgent, streamSid: string): void {
+  // Initialize accumulator for this stream
+  transcriptAccumulators.set(streamSid, []);
+  
   stt.on(LiveTranscriptionEvents.Open, () => {
     console.log(`[STT ${streamSid}] Connected`);
   });
@@ -36,9 +42,28 @@ export function setupSTTHandlers(stt: LiveClient, agent: VoiceAgent, streamSid: 
   stt.on(LiveTranscriptionEvents.Transcript, (data) => {
     const transcript = data.channel?.alternatives?.[0]?.transcript;
     
-    // Only process final, speech-complete transcripts
-    if (data.is_final && data.speech_final && transcript && transcript.trim()) {
-      agent.handleTranscript(transcript.trim());
+    // Log all transcript events to debug what's happening
+    if (transcript && transcript.trim()) {
+      console.log(`[STT ${streamSid}] Transcript: is_final=${data.is_final}, speech_final=${data.speech_final}, text="${transcript}"`);
+    }
+    
+    // Accumulate final transcripts until speech is complete
+    if (data.is_final && transcript && transcript.trim()) {
+      const accumulator = transcriptAccumulators.get(streamSid) || [];
+      accumulator.push(transcript.trim());
+      transcriptAccumulators.set(streamSid, accumulator);
+      
+      // When speech is final, send all accumulated text
+      if (data.speech_final) {
+        const fullTranscript = accumulator.join(' ');
+        console.log(`[STT ${streamSid}] ✅ Processing complete utterance: "${fullTranscript}"`);
+        
+        // Clear accumulator for next utterance
+        transcriptAccumulators.set(streamSid, []);
+        
+        // Send to agent
+        agent.handleTranscript(fullTranscript);
+      }
     }
   });
 
@@ -48,6 +73,8 @@ export function setupSTTHandlers(stt: LiveClient, agent: VoiceAgent, streamSid: 
 
   stt.on(LiveTranscriptionEvents.Close, () => {
     console.log(`[STT ${streamSid}] Closed`);
+    // Clean up accumulator
+    transcriptAccumulators.delete(streamSid);
   });
 }
 
