@@ -9,13 +9,15 @@ import { anthropic } from "@ai-sdk/anthropic";
 
 const PORT = process.env.PORT || 40451;
 
-console.log("Hello via Bun!");
+console.log(`[${new Date().toISOString()}] Hello via Bun!`);
 
 interface CallSession {
   ws: Bun.ServerWebSocket;
   deepgramSTT: LiveClient;
   deepgramTTS: SpeakLiveClient;
   conversation: ModelMessage[];
+  agent: Agent<{}, never, never>;
+  abortController: AbortController
 }
 
 const callSessions = new Map<string, CallSession>();
@@ -26,18 +28,6 @@ const deepgramClient = createClient(process.env.DEEPGRAM_ACCESS_TOKEN);
 const tools = {
 
 }
-
-const agent = new Agent({
-  model: anthropic("claude-3-5-haiku-latest"),
-  system: `
-  You are a helpful scheduling assistant named Jordan. You work for your client, Samir Buch. 
-  He uses he/him or they/them pronouns.
-  Upon request, his phone number is 267-625-3752, and his preferred email is samirjbuch@gmail.com.
-  Please note that your responses will be converted into audio, so take extra care to: spell out numbers, and avoid using punctuation that doesn't translate well into speech (including but not limited to slashes, brackets, braces, parentheses, or bullet points).
-  `,
-  tools,
-  stopWhen: stepCountIs(20)
-});
 
 Bun.serve({
   port: PORT,
@@ -129,12 +119,30 @@ Bun.serve({
             sample_rate: 8000
           });
 
+          const abortController = new AbortController();
+
+          const agent = new Agent({
+            model: anthropic("claude-3-5-haiku-latest"),
+            system: `
+            You are a helpful haircut scheduling assistant named Jordan. You work for your client, Samir Buch. 
+            He uses he/him or they/them pronouns.
+            Upon request, his phone number is 267-625-3752, and his preferred email is samirjbuch@gmail.com.
+            Please note that your responses will be converted into audio, so take extra care to: spell out numbers, and avoid using punctuation that doesn't translate well into speech (including but not limited to slashes, brackets, braces, parentheses, or bullet points).
+            Please keep all responses very brief.
+            `,
+            tools,
+            stopWhen: stepCountIs(20),
+            abortSignal: abortController.signal
+          });
+
           // Create session for this call
           const session: CallSession = {
             ws,
             deepgramSTT,
             deepgramTTS,
-            conversation: []
+            conversation: [],
+            agent,
+            abortController
           };
 
           callSessions.set(json.streamSid, session);
@@ -145,14 +153,15 @@ Bun.serve({
           });
 
           deepgramSTT.on(LiveTranscriptionEvents.Transcript, async (data) => {
-            console.log(`[${json.streamSid}] Transcript:`,
-              data.is_final,
-              data.speech_final,
-              data.channel?.alternatives?.[0]?.transcript
-            );
+            // console.log(`[${json.streamSid}] Transcript:`,
+            //   // data.is_final,
+            //   // data.speech_final,
+            //   data.channel?.alternatives?.[0]?.transcript
+            // );
 
             // Now we can safely associate this transcript with the correct call
             if (data.is_final && data.speech_final) {
+              console.log(`[${json.streamSid}] Transcript: ${data.channel?.alternatives?.[0]?.transcript}`)
               const transcript = data.channel?.alternatives?.[0]?.transcript;
               if (transcript) {
                 session.conversation.push({
@@ -167,13 +176,19 @@ Bun.serve({
                   prompt: session.conversation
                 });
 
+                let fullText = ""
                 // Stream the streamed text to deepgram TTS
                 for await (const chunk of result.textStream) {
-                  console.log(chunk)
+                  console.log(chunk);
                   deepgramTTS.sendText(chunk);
+                  fullText += chunk;
                 }
                 // and flush when all chunks are done sending
                 deepgramTTS.flush();
+                session.conversation.push({
+                  role: "assistant",
+                  content: fullText
+                })
               }
             }
           });
@@ -184,6 +199,7 @@ Bun.serve({
 
           deepgramSTT.on(LiveTranscriptionEvents.Close, () => {
             console.log(`[${json.streamSid}] STT connection closed`);
+            session.abortController.abort();
           });
 
           // Set up TTS event handlers for this specific call
@@ -192,7 +208,7 @@ Bun.serve({
           });
 
           deepgramTTS.on(LiveTTSEvents.Audio, (audio: Uint8Array) => {
-            console.log(`[${json.streamSid}] Received TTS audio:`, audio.byteLength, "bytes");
+            // console.log(`[${json.streamSid}] Received TTS audio:`, audio.byteLength, "bytes");
 
             // Convert the mulaw audio to base64
             const b64 = audio.toBase64();
@@ -245,6 +261,7 @@ Bun.serve({
             session.deepgramSTT.requestClose();
             session.deepgramTTS.requestClose();
             callSessions.delete(json.streamSid);
+            session.abortController.abort();
           }
 
           break;
