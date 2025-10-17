@@ -17,8 +17,17 @@ export async function handleStart(
   ws: any
 ): Promise<void> {
   const { streamSid, start } = message;
-  const { callSid } = start;
-  console.log(`\n[Twilio] ═══ CALL START ═══ ${streamSid} (Call: ${callSid})`);
+  const { callSid, customParameters } = start;
+  
+  // Extract caller information from custom parameters
+  const callerFrom = customParameters?.from as string | undefined;
+  const callerTo = customParameters?.to as string | undefined;
+  
+  console.log(`\n[Twilio] ═══ CALL START ═══`);
+  console.log(`  Stream: ${streamSid}`);
+  console.log(`  Call: ${callSid}`);
+  if (callerFrom) console.log(`  📱 From: ${callerFrom}`);
+  if (callerTo) console.log(`  📱 To: ${callerTo}`);
 
   // Create Deepgram connections
   const stt = createSTT();
@@ -30,7 +39,8 @@ export async function handleStart(
     streamSid,
     callSid,
     stt,
-    tts
+    tts,
+    callerPhone: callerFrom
   });
 
   // Now create LLM agent with tools that reference voiceAgent

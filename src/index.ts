@@ -107,15 +107,34 @@ Bun.serve({
         return new Response("Missing or invalid PUBLIC_URL", { status: 500 });
       }
 
+      // Parse Twilio's URL query parameters to get call info
+      const url = new URL(req.url);
+      const from = url.searchParams.get('From') || '';
+      const to = url.searchParams.get('To') || '';
+      const callSid = url.searchParams.get('CallSid') || '';
+      const fromCity = url.searchParams.get('FromCity') || '';
+      const fromState = url.searchParams.get('FromState') || '';
+
+      console.log(`[Twilio] 📞 Incoming call:`);
+      console.log(`  From: ${from} (${fromCity}, ${fromState})`);
+      console.log(`  To: ${to}`);
+      console.log(`  CallSid: ${callSid}`);
+
       const isNgrok = publicURL.includes(".ngrok-free.app");
       const wsURL = `wss://${publicURL}${isNgrok ? "" : `:${PORT}`}/twilio-ws`;
 
       const response = new Twilio.twiml.VoiceResponse();
       const connect = response.connect();
-      connect.stream({
+      const stream = connect.stream({
         name: "Voice Agent Stream",
         url: wsURL
       });
+      
+      // Add custom parameters to pass caller info to WebSocket
+      stream.parameter({ name: 'from', value: from });
+      stream.parameter({ name: 'to', value: to });
+      stream.parameter({ name: 'fromCity', value: fromCity });
+      stream.parameter({ name: 'fromState', value: fromState });
 
       console.log(`[Twilio] Forwarding call to WebSocket: ${wsURL}`);
 

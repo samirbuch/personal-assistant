@@ -20,11 +20,13 @@ export interface VoiceAgentConfig {
   stt: LiveClient;
   tts: SpeakLiveClient;
   agent?: Agent<{}, never, never>; // Optional - can be set later
+  callerPhone?: string; // Caller's phone number for verification
 }
 
 export class VoiceAgent {
   private streamSid: string;
   private callSid: string;
+  private callerPhone?: string;
   private stateMachine: VoiceAgentStateMachine;
   private audio: AudioController;
   private conversation: ConversationManager;
@@ -38,6 +40,7 @@ export class VoiceAgent {
   constructor(config: VoiceAgentConfig) {
     this.streamSid = config.streamSid;
     this.callSid = config.callSid;
+    this.callerPhone = config.callerPhone;
     this.stt = config.stt;
     this.tts = config.tts;
     if (config.agent) {
@@ -373,6 +376,13 @@ export class VoiceAgent {
    */
   public getCallSid(): string {
     return this.callSid;
+  }
+
+  /**
+   * Get caller's phone number
+   */
+  public getCallerPhone(): string | undefined {
+    return this.callerPhone;
   }
 
   /**
