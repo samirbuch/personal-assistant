@@ -55,6 +55,9 @@ export function setupSTTHandlers(stt: LiveClient, agent: VoiceAgent, streamSid: 
     const transcript = data.channel?.alternatives?.[0]?.transcript;
     const words = data.channel?.alternatives?.[0]?.words;
     
+    // Log ALL transcript events including empty ones to debug
+    console.log(`[STT ${streamSid}] 📥 RAW transcript event: is_final=${data.is_final}, speech_final=${data.speech_final}, text="${transcript || '(empty)'}"`);
+    
     // Log all transcript events to debug what's happening
     if (transcript && transcript.trim()) {
       // Extract speaker information if available
@@ -90,6 +93,7 @@ export function setupSTTHandlers(stt: LiveClient, agent: VoiceAgent, streamSid: 
         transcriptAccumulators.set(streamSid, []);
         
         // Send to agent with speaker information
+        console.log(`[STT ${streamSid}] 📤 Calling agent.handleTranscript()`);
         agent.handleTranscript(fullTranscript, speaker);
       }
     }

@@ -2,6 +2,7 @@
  * Twilio WebSocket Handlers
  * 
  * Handle Twilio WebSocket messages and route to voice agents
+ * Supports both solo calls and dual-call conferences
  */
 
 import type { TwilioWebsocket } from "../../lib/TwilioWebsocketTypes";
@@ -9,15 +10,8 @@ import { SessionManager } from "../managers/SessionManager";
 import { VoiceAgent } from "../core/VoiceAgent";
 import { createSTT, createTTS, setupSTTHandlers, setupTTSHandlers } from "../managers/DeepgramManager";
 import { createLLMAgent } from "../managers/LLMManager";
-import { ConferenceManager } from "../managers/ConferenceManager";
 
 const sessions = new SessionManager();
-let conferenceManager: ConferenceManager | null = null;
-
-// Initialize conference manager if owner phone is configured
-if (process.env.OWNER_PHONE_NUMBER) {
-  conferenceManager = new ConferenceManager(process.env.OWNER_PHONE_NUMBER);
-}
 
 export async function handleStart(
   message: TwilioWebsocket.StartMessage,
@@ -26,32 +20,74 @@ export async function handleStart(
   const { streamSid, start } = message;
   const { callSid, customParameters } = start;
   
-  // Extract caller information from custom parameters
+  // Extract caller information and conference metadata from custom parameters
   const callerFrom = customParameters?.from as string | undefined;
   const callerTo = customParameters?.to as string | undefined;
+  const conferenceId = customParameters?.conferenceId as string | undefined;
+  const role = customParameters?.role as string | undefined;
   
   console.log(`\n[Twilio] ═══ CALL START ═══`);
   console.log(`  Stream: ${streamSid}`);
   console.log(`  Call: ${callSid}`);
   if (callerFrom) console.log(`  📱 From: ${callerFrom}`);
   if (callerTo) console.log(`  📱 To: ${callerTo}`);
+  if (conferenceId) console.log(`  🎙️  Conference: ${conferenceId}`);
+  if (role) console.log(`  👤 Role: ${role}`);
 
   // Create Deepgram connections
-  // Enable diarization for potential future use (doesn't hurt in single-speaker mode)
+  // Enable diarization (important for conference calls)
   const stt = createSTT(true);
   const tts = createTTS();
 
-  // Create voice agent first (without LLM agent)
+  // Check if this is an owner joining a conference
+  if (conferenceId && role === "owner") {
+    console.log(`[Twilio] 🎙️  Owner joining conference ${conferenceId}`);
+    
+    const conference = sessions.getConference(conferenceId);
+    if (!conference) {
+      console.error(`[Twilio] ❌ Conference ${conferenceId} not found!`);
+      return;
+    }
+
+    // Create owner voice agent
+    const ownerAgent = new VoiceAgent({
+      ws,
+      streamSid,
+      callSid,
+      stt,
+      tts,
+      role: "owner"
+    });
+
+    // Set up handlers
+    setupSTTHandlers(stt, ownerAgent, streamSid, true);
+    setupTTSHandlers(tts, ownerAgent, streamSid);
+
+    // Add to conference
+    sessions.addToConference(streamSid, ownerAgent, conference, "owner");
+    
+    // Initialize the owner agent
+    await ownerAgent.initialize();
+    await conference.setOwnerAgent(ownerAgent);
+
+    console.log(`[Twilio] ✅ Owner agent ready and added to conference`);
+    return;
+  }
+
+  // Regular solo call (not part of a conference yet)
+  console.log(`[Twilio] Regular solo call`);
+  
   const voiceAgent = new VoiceAgent({
     ws,
     streamSid,
     callSid,
     stt,
     tts,
-    callerPhone: callerFrom
+    callerPhone: callerFrom,
+    role: "caller" // Default role for initial caller
   });
 
-  // Now create LLM agent with tools that reference voiceAgent
+  // Create LLM agent with tools that reference voiceAgent
   const agent = await createLLMAgent(voiceAgent);
   voiceAgent.setAgent(agent);
 
@@ -71,14 +107,14 @@ export async function handleStart(
 export async function handleMedia(
   message: TwilioWebsocket.MediaMessage
 ): Promise<void> {
-  const agent = sessions.get(message.streamSid);
+  const agent = sessions.getAgent(message.streamSid);
   
   if (!agent) {
     console.warn(`[Twilio] No agent found for ${message.streamSid}`);
     return;
   }
 
-  // Pass audio to agent
+  // Pass audio directly to the agent
   await agent.handleIncomingAudio(message.media.payload);
 }
 
@@ -93,36 +129,38 @@ export function getSessionCount(): number {
   return sessions.getCount();
 }
 
-export function getSession(streamSid: string): VoiceAgent | undefined {
-  return sessions.get(streamSid);
-}
-
 export function getSessionManager(): SessionManager {
   return sessions;
 }
 
-export function getConferenceManager(): ConferenceManager | null {
-  return conferenceManager;
-}
-
-export async function createConference(streamSid: string, reason: string): Promise<void> {
-  const agent = sessions.get(streamSid);
+/**
+ * Initiate a conference (called by transferToHuman tool)
+ */
+export async function initiateConference(callerStreamSid: string, reason: string): Promise<string> {
+  const agent = sessions.getAgent(callerStreamSid);
   
   if (!agent) {
-    throw new Error(`No agent found for ${streamSid}`);
+    throw new Error(`No agent found for ${callerStreamSid}`);
   }
 
-  if (!conferenceManager) {
-    throw new Error("Conference manager not initialized - OWNER_PHONE_NUMBER not set");
+  if (!process.env.OWNER_PHONE_NUMBER) {
+    throw new Error("OWNER_PHONE_NUMBER not configured");
   }
 
-  const callSid = agent.getCallSid();
+  console.log(`[Twilio] 🎙️  Initiating conference for ${callerStreamSid} - Reason: ${reason}`);
   
-  console.log(`[Twilio] Creating conference for ${streamSid} - Reason: ${reason}`);
+  // Generate unique conference ID
+  const conferenceId = `conf-${Date.now()}-${callerStreamSid.slice(-8)}`;
   
-  // Create conference and add owner
-  // Note: This will disconnect the AI's media stream (expected for Option 2)
-  await conferenceManager.createConferenceAndAddOwner(callSid, streamSid);
+  // Create the conference session
+  const conference = sessions.createConference(conferenceId);
   
-  console.log(`[Twilio] Conference created - caller and owner will continue without AI`);
+  // Move the caller agent to the conference
+  sessions.addToConference(callerStreamSid, agent, conference, "caller");
+  
+  console.log(`[Twilio] ✅ Conference ${conferenceId} created, caller added`);
+  console.log(`[Twilio] 📞 Now calling owner to join...`);
+  
+  return conferenceId;
 }
+

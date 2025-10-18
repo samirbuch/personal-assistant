@@ -21,12 +21,20 @@ export interface VoiceAgentConfig {
   tts: SpeakLiveClient;
   agent?: Agent<{}, never, never>; // Optional - can be set later
   callerPhone?: string; // Caller's phone number for verification
+  role?: "caller" | "owner"; // Role in conference (if applicable)
+}
+
+export enum AgentRole {
+  SOLO = "solo",      // Standalone call (not in conference)
+  CALLER = "caller",  // Original caller in a conference
+  OWNER = "owner"     // Owner who joined the conference
 }
 
 export class VoiceAgent {
   private streamSid: string;
   private callSid: string;
   private callerPhone?: string;
+  private role: AgentRole;
   private stateMachine: VoiceAgentStateMachine;
   private audio: AudioController;
   private conversation: ConversationManager;
@@ -36,11 +44,17 @@ export class VoiceAgent {
   private agent!: Agent<{}, never, never>; // Will be set after construction
   private abortController: AbortController | null = null;
   private audioInFlight: boolean = false;
+  
+  // Conference mode
+  private conferenceSession: any | null = null; // ConferenceSession reference (any to avoid circular dependency)
 
   constructor(config: VoiceAgentConfig) {
     this.streamSid = config.streamSid;
     this.callSid = config.callSid;
     this.callerPhone = config.callerPhone;
+    this.role = config.role === "owner" ? AgentRole.OWNER : 
+                config.role === "caller" ? AgentRole.CALLER : 
+                AgentRole.SOLO;
     this.stt = config.stt;
     this.tts = config.tts;
     if (config.agent) {
@@ -69,9 +83,14 @@ export class VoiceAgent {
    * Handle incoming audio from user
    */
   public async handleIncomingAudio(mulawBase64: string): Promise<void> {
-    // Send to STT always
+    // Send to STT always (for Jordan to listen)
     const buffer = Uint8Array.fromBase64(mulawBase64);
     this.stt.send(buffer.buffer);
+
+    // If in conference, route RAW AUDIO directly to the other call
+    if (this.conferenceSession) {
+      this.conferenceSession.routeRawAudio(this.role!, mulawBase64);
+    }
 
     // Don't use audio-based interruption detection - rely on transcript-based only
     // This avoids false positives from user's own trailing audio
@@ -83,6 +102,15 @@ export class VoiceAgent {
    * @param speakerId Optional speaker ID from diarization (used in conference mode)
    */
   public async handleTranscript(transcript: string, speakerId?: number): Promise<void> {
+    // If in conference mode, delegate to ConferenceSession
+    if (this.conferenceSession) {
+      const speaker = this.role === AgentRole.CALLER ? Speaker.CALLER : Speaker.OWNER;
+      console.log(`[VoiceAgent ${this.streamSid}] Conference mode - delegating transcript to ConferenceSession`);
+      await this.conferenceSession.onTranscript(speaker, transcript);
+      return;
+    }
+    
+    // Solo mode - handle normally
     const currentState = this.stateMachine.getState();
     
     // If we receive a transcript while SPEAKING, that's an interruption
@@ -412,16 +440,17 @@ export class VoiceAgent {
   }
 
   /**
-   * Transfer the call to a human by creating a conference
+   * Transfer the call to a human by creating a dual-call conference
    * 
-   * Implementation for Option 2: Graceful Disconnect
+   * New Architecture: Dual-Call Audio Mixing
    * 1. AI announces the transfer
-   * 2. Waits for announcement to complete
-   * 3. Creates conference (which disconnects AI stream)
-   * 4. Caller and owner continue in conference without AI
+   * 2. Creates a ConferenceSession
+   * 3. Initiates a second call to the owner
+   * 4. Both calls' audio is routed through the ConferenceSession
+   * 5. Jordan (AI) can participate when directly addressed
    */
   public async transferToHuman(reason: string): Promise<void> {
-    console.log(`[VoiceAgent] Transferring to human: ${reason}`);
+    console.log(`[VoiceAgent] 🎙️  Transferring to human: ${reason}`);
     
     const ownerPhone = process.env.OWNER_PHONE_NUMBER;
     const ownerName = process.env.OWNER_NAME || "a team member";
@@ -431,7 +460,6 @@ export class VoiceAgent {
     }
 
     // Step 1: Announce the transfer to the caller
-    // Force the agent into SPEAKING state to deliver this message
     console.log(`[VoiceAgent] Announcing transfer to caller...`);
     this.stateMachine.transition(AgentState.SPEAKING, "Announcing transfer to human");
     
@@ -442,19 +470,17 @@ export class VoiceAgent {
     this.tts.sendText(announcement);
     this.tts.flush();
     
-    // Wait for the announcement to be spoken (estimate ~3 seconds for typical announcement)
-    // We can't reliably detect when TTS finishes in this flow, so use a reasonable delay
+    // Wait for the announcement to be spoken
     console.log(`[VoiceAgent] Waiting for announcement to complete...`);
     await new Promise(resolve => setTimeout(resolve, 3500));
     
-    // Step 2: Create the conference
-    // This will disconnect the media stream (expected Twilio behavior for Option 2)
-    console.log(`[VoiceAgent] Creating conference (stream will disconnect)...`);
+    // Step 2: Initiate the conference via API
+    console.log(`[VoiceAgent] Initiating dual-call conference...`);
     
     const publicURL = process.env.PUBLIC_URL?.replace(/^https?:\/\//, "").replace(/\/$/, "");
     const port = process.env.PORT || 40451;
     const isNgrok = publicURL?.includes(".ngrok-free.app");
-    const url = `http://${publicURL}${isNgrok ? "" : `:${port}`}/api/create-conference/${this.streamSid}`;
+    const url = `http://${publicURL}${isNgrok ? "" : `:${port}`}/api/initiate-conference/${this.streamSid}`;
     
     try {
       const response = await fetch(url, { 
@@ -464,19 +490,23 @@ export class VoiceAgent {
       });
       
       if (!response.ok) {
-        throw new Error(`Failed to create conference: ${response.statusText}`);
+        throw new Error(`Failed to initiate conference: ${response.statusText}`);
       }
       
-      console.log(`[VoiceAgent] ✅ Conference creation initiated - AI will disconnect shortly`);
-      console.log(`[VoiceAgent] Caller and ${ownerName} will continue in conference`);
+      const data = await response.json() as { conferenceId: string };
+      console.log(`[VoiceAgent] ✅ Conference ${data.conferenceId} initiated`);
+      console.log(`[VoiceAgent] 🎙️  3-way call active - Jordan will respond when addressed`);
       
-      // Clean up resources since we're about to disconnect
-      this.cleanup();
+      // Already in LISTENING state from the announcement, no need to transition
+      // The agent is now in conference mode and will delegate to ConferenceSession
       
     } catch (error) {
-      console.error(`[VoiceAgent] Error creating conference:`, error);
-      // On error, transition back to listening so conversation can continue
-      this.stateMachine.transition(AgentState.LISTENING, "Transfer failed");
+      console.error(`[VoiceAgent] Error initiating conference:`, error);
+      // On error, ensure we're in listening state so conversation can continue
+      const currentState = this.stateMachine.getState();
+      if (currentState !== AgentState.LISTENING) {
+        this.stateMachine.transition(AgentState.LISTENING, "Transfer failed");
+      }
       throw error;
     }
   }
@@ -501,5 +531,70 @@ export class VoiceAgent {
     } catch (error) {
       console.error(`[VoiceAgent] Error hanging up:`, error);
     }
+  }
+
+  /**
+   * Join a conference session
+   * Called when this agent becomes part of a paired conference
+   */
+  public joinConference(conferenceSession: any): void {
+    this.conferenceSession = conferenceSession;
+    console.log(`[VoiceAgent ${this.streamSid}] Joined conference as ${this.role}`);
+  }
+
+  /**
+   * Leave conference session
+   */
+  public leaveConference(): void {
+    this.conferenceSession = null;
+    console.log(`[VoiceAgent ${this.streamSid}] Left conference`);
+  }
+
+  /**
+   * Send raw audio directly to Twilio (used for human-to-human audio routing in conference)
+   */
+  public sendRawAudio(mulawBase64: string): void {
+    const msg: any = {
+      event: "media",
+      streamSid: this.streamSid,
+      media: { payload: mulawBase64 }
+    };
+    this.audio.ws.send(JSON.stringify(msg));
+  }
+
+  /**
+   * Speak text directly (used by ConferenceSession for Jordan's responses)
+   * This bypasses the LLM and sends text directly to TTS
+   */
+  public async speakText(text: string): Promise<void> {
+    console.log(`[VoiceAgent ${this.streamSid}] Speaking Jordan's text: "${text.slice(0, 50)}..."`);
+    
+    // Enable audio before sending (important for conference mode)
+    this.audio.enable();
+    
+    // Send the text to TTS and flush immediately
+    this.tts.sendText(text);
+    this.tts.flush();
+  }
+
+  /**
+   * Flush TTS buffer (used by ConferenceSession)
+   */
+  public async flushTTS(): Promise<void> {
+    this.tts.flush();
+  }
+
+  /**
+   * Get role
+   */
+  public getRole(): AgentRole {
+    return this.role;
+  }
+
+  /**
+   * Check if in conference
+   */
+  public isInConference(): boolean {
+    return this.conferenceSession !== null;
   }
 }

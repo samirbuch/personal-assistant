@@ -55,12 +55,21 @@ export class ConversationManager {
   /**
    * Add a user message to the conversation
    * @param content Message content
-   * @param speakerId Optional speaker ID from diarization
+   * @param speakerId Optional speaker ID from diarization OR Speaker enum
    */
-  public addUserMessage(content: string, speakerId?: number): void {
+  public addUserMessage(content: string, speakerIdOrEnum?: number | Speaker): void {
     let speaker: Speaker | undefined;
+    let speakerId: number | undefined;
     
-    if (this.conferenceMode && speakerId !== undefined) {
+    // Handle Speaker enum directly (used by ConferenceSession)
+    if (speakerIdOrEnum === Speaker.CALLER || speakerIdOrEnum === Speaker.OWNER) {
+      speaker = speakerIdOrEnum;
+      speakerId = undefined; // No diarization ID when speaker is explicitly known
+    } 
+    // Handle numeric speaker ID from diarization
+    else if (this.conferenceMode && speakerIdOrEnum !== undefined) {
+      speakerId = speakerIdOrEnum as number;
+      
       // Determine if this is the caller or owner
       if (this.callerSpeakerId === undefined) {
         // First speaker is assumed to be the caller

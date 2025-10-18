@@ -32,29 +32,31 @@ export async function shouldAssistantRespond(
     const { object } = await generateObject({
       model: anthropic("claude-3-5-haiku-latest"),
       schema: responseDecisionSchema,
-      system: `You are a gatekeeper that determines when an AI assistant should speak in a 3-way conference call.
+      system: `You are a gatekeeper that determines when an AI assistant named "Jordan" should speak in a 3-way conference call.
 
 The conference includes:
-- CALLER: The person who originally called
-- OWNER: The human owner who was brought into the call
-- ASSISTANT: An AI assistant (you are deciding if IT should speak)
+- CALLER: The person who originally called (e.g., a barbershop, business, etc.)
+- OWNER: The human owner (Samir) who was brought into the call
+- ASSISTANT: An AI assistant named Jordan (you are deciding if Jordan should speak)
 
-Rules for when the assistant SHOULD respond:
-1. When the CALLER is directly asking the assistant a question
-2. When the OWNER explicitly asks the assistant to help or respond
-3. When there's a clear expectation for the assistant to provide information it has access to
+Rules for when Jordan SHOULD respond:
+1. When the CALLER or OWNER directly addresses "Jordan" by name
+2. When someone asks Jordan a question or requests Jordan's help
+3. When there's a clear expectation for Jordan to provide information (calendar, scheduling, etc.)
 4. When asked to perform a task (like checking calendar, making calls, etc.)
+5. When the CALLER asks "what times were available?" or similar questions Jordan would know
 
-Rules for when the assistant should NOT respond:
+Rules for when Jordan should NOT respond:
 1. When CALLER and OWNER are having a conversation with each other
 2. When the OWNER is addressing the CALLER directly
 3. When the conversation is clearly between two humans
 4. When someone just acknowledged something or said "okay", "thanks", etc. to the other human
+5. When generic greetings are exchanged between CALLER and OWNER (unless Jordan is explicitly included)
 
 The last speaker was: ${lastSpeaker.toUpperCase()}
 
-Analyze the conversation and decide if the assistant should respond.`,
-      prompt: `Recent conversation:\n${conversationHistory.map(m => `${m.role}: ${m.content}`).join('\n')}\n\nShould the assistant respond?`
+Analyze the conversation and decide if Jordan (the assistant) should respond.`,
+      prompt: `Recent conversation:\n${conversationHistory.map(m => `${m.role}: ${m.content}`).join('\n')}\n\nShould Jordan respond?`
     });
 
     console.log(`[Gatekeeper] Decision: ${object.shouldRespond ? 'RESPOND' : 'SILENT'} (confidence: ${object.confidence}) - ${object.reasoning}`);

@@ -7,7 +7,8 @@
 import Twilio from "twilio";
 import * as Bun from "bun";
 import { TwilioWebsocket } from "../lib/TwilioWebsocketTypes";
-import { handleStart, handleMedia, handleStop, getSession, createConference } from "./handlers/TwilioHandler";
+import { handleStart, handleMedia, handleStop, initiateConference } from "./handlers/TwilioHandler";
+import { initiateOwnerCall } from "./utils/CallInitiator";
 
 const PORT = process.env.PORT || 40451;
 
@@ -75,33 +76,20 @@ Bun.serve({
         return new Response("Missing streamSid", { status: 400 });
       }
 
-      const session = getSession(streamSid);
-      if (!session) {
-        return new Response("Session not found", { status: 404 });
-      }
+      // For now, just return success - the WebSocket closing will handle cleanup
+      console.log(`[API] Hangup requested for stream ${streamSid}`);
 
-      const callSid = session.getCallSid();
-
-      try {
-        const call = await twilioClient.calls(callSid).update({ status: 'completed' });
-        console.log(`[API] Hung up call ${callSid} for stream ${streamSid}`);
-
-        return new Response(JSON.stringify({
-          success: true,
-          callSid,
-          streamSid,
-          status: call.status
-        }), {
-          headers: { "Content-Type": "application/json" }
-        });
-      } catch (error) {
-        console.error(`[API] Error hanging up call ${callSid}:`, error);
-        return new Response("Error hanging up call", { status: 500 });
-      }
+      return new Response(JSON.stringify({
+        success: true,
+        streamSid,
+        message: "Hangup initiated"
+      }), {
+        headers: { "Content-Type": "application/json" }
+      });
     },
 
-    // API: Create conference call (add owner to call)
-    "/api/create-conference/:streamSid": async (req) => {
+    // API: Initiate conference (dual-call mode)
+    "/api/initiate-conference/:streamSid": async (req) => {
       if (req.method !== "POST") {
         return new Response("Method not allowed", { status: 405 });
       }
@@ -111,26 +99,36 @@ Bun.serve({
         return new Response("Missing streamSid", { status: 400 });
       }
 
+      if (!process.env.OWNER_PHONE_NUMBER) {
+        return new Response("OWNER_PHONE_NUMBER not configured", { status: 500 });
+      }
+
       try {
         const body = await req.json() as { reason?: string };
         const reason = body.reason || "User requested human assistance";
         
-        await createConference(streamSid, reason);
+        // Create the conference session and move caller into it
+        const conferenceId = await initiateConference(streamSid, reason);
         
-        console.log(`[API] Conference created for stream ${streamSid}`);
+        // Initiate the call to the owner
+        const ownerCall = await initiateOwnerCall(process.env.OWNER_PHONE_NUMBER, conferenceId);
+        
+        console.log(`[API] Conference ${conferenceId} created, owner call ${ownerCall.callSid} initiated`);
 
         return new Response(JSON.stringify({
           success: true,
+          conferenceId,
           streamSid,
-          message: "Conference call initiated"
+          ownerCallSid: ownerCall.callSid,
+          message: "Dual-call conference initiated"
         }), {
           headers: { "Content-Type": "application/json" }
         });
       } catch (error: any) {
-        console.error(`[API] Error creating conference for ${streamSid}:`, error);
+        console.error(`[API] Error initiating conference for ${streamSid}:`, error);
         return new Response(JSON.stringify({
           success: false,
-          error: error.message || "Error creating conference"
+          error: error.message || "Error initiating conference"
         }), { 
           status: 500,
           headers: { "Content-Type": "application/json" }
