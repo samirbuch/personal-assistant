@@ -2,10 +2,10 @@
  * Conversation Manager
  * 
  * Manages conversation history with support for partial responses,
- * interruptions, and multi-speaker conversations (conference mode).
+ * interruptions, multi-speaker conversations (conference mode), and tool calls.
  */
 
-import type { ModelMessage } from "ai";
+import type { ModelMessage, AssistantModelMessage, ToolModelMessage } from "ai";
 
 export enum Speaker {
   CALLER = "caller",
@@ -13,15 +13,8 @@ export enum Speaker {
   ASSISTANT = "assistant"
 }
 
-export interface SpeakerMessage {
-  role: string;
-  content: string;
-  speaker?: Speaker;
-  speakerId?: number; // Raw speaker ID from diarization
-}
-
 export class ConversationManager {
-  private messages: SpeakerMessage[] = [];
+  private messages: ModelMessage[] = [];
   private currentAssistantMessage: string = "";
   private conferenceMode: boolean = false;
   private callerSpeakerId?: number; // Track which speaker ID is the caller
@@ -55,7 +48,7 @@ export class ConversationManager {
   /**
    * Add a user message to the conversation
    * @param content Message content
-   * @param speakerId Optional speaker ID from diarization OR Speaker enum
+   * @param speakerIdOrEnum Optional speaker ID from diarization OR Speaker enum
    */
   public addUserMessage(content: string, speakerIdOrEnum?: number | Speaker): void {
     let speaker: Speaker | undefined;
@@ -88,17 +81,54 @@ export class ConversationManager {
       }
     }
 
-    const message: SpeakerMessage = {
+    // Format content with speaker label in conference mode
+    const messageContent = (this.conferenceMode && speaker) 
+      ? `[${speaker.toUpperCase()}]: ${content}`
+      : content;
+
+    const message: ModelMessage = {
       role: "user",
-      content,
-      speaker,
-      speakerId
+      content: messageContent
     };
 
     this.messages.push(message);
     
     const speakerLabel = speaker ? `[${speaker}]` : '';
     console.log(`[Conversation] User${speakerLabel}: ${content}`);
+  }
+
+  /**
+   * Add a complete assistant message (with potential tool calls)
+   * Used when we have the full response from the LLM
+   */
+  public addAssistantMessage(message: AssistantModelMessage): void {
+    this.messages.push(message);
+    
+    // Log text content if available
+    if (typeof message.content === 'string') {
+      console.log(`[Conversation] Assistant: ${message.content}`);
+    } else if (Array.isArray(message.content)) {
+      const textParts = message.content.filter(part => part.type === 'text');
+      const toolCalls = message.content.filter(part => part.type === 'tool-call');
+      
+      if (textParts.length > 0) {
+        const text = textParts.map(p => 'text' in p ? p.text : '').join('');
+        console.log(`[Conversation] Assistant: ${text}`);
+      }
+      
+      if (toolCalls.length > 0) {
+        console.log(`[Conversation] Assistant made ${toolCalls.length} tool call(s)`);
+      }
+    }
+  }
+
+  /**
+   * Add tool results to conversation
+   * Used after tools execute
+   */
+  public addToolResults(message: ToolModelMessage): void {
+    this.messages.push(message);
+    console.log(`[Conversation] Tool results: ${message.content.length} result(s)`);
   }
 
   /**
@@ -120,10 +150,11 @@ export class ConversationManager {
    */
   public completeAssistantMessage(): void {
     if (this.currentAssistantMessage) {
-      this.messages.push({
+      const message: ModelMessage = {
         role: "assistant",
         content: this.currentAssistantMessage
-      });
+      };
+      this.messages.push(message);
       console.log(`[Conversation] Assistant: ${this.currentAssistantMessage}`);
       this.currentAssistantMessage = "";
     }
@@ -135,10 +166,11 @@ export class ConversationManager {
   public handleInterruption(): void {
     // Only save if we've generated a meaningful response
     if (this.currentAssistantMessage && this.currentAssistantMessage.length > 10) {
-      this.messages.push({
+      const message: ModelMessage = {
         role: "assistant",
         content: this.currentAssistantMessage + " [interrupted]"
-      });
+      };
+      this.messages.push(message);
       console.log(`[Conversation] Assistant (interrupted): ${this.currentAssistantMessage}`);
     }
     this.currentAssistantMessage = "";
@@ -146,37 +178,26 @@ export class ConversationManager {
 
   /**
    * Get all messages for LLM prompt
-   * Formats messages with speaker labels when in conference mode
    */
   public getMessages(): ModelMessage[] {
-    if (!this.conferenceMode) {
-      // Cast is safe since we only use 'user' and 'assistant' roles
-      return [...this.messages] as ModelMessage[];
-    }
-
-    // In conference mode, add speaker labels to content
-    return this.messages.map(msg => {
-      const speakerMsg = msg as SpeakerMessage;
-      if (speakerMsg.speaker && speakerMsg.role === "user") {
-        return {
-          role: "user" as const,
-          content: `[${speakerMsg.speaker.toUpperCase()}]: ${msg.content}`
-        };
-      }
-      return {
-        role: msg.role as "user" | "assistant",
-        content: msg.content
-      };
-    }) as ModelMessage[];
+    return [...this.messages];
   }
 
   /**
-   * Get the last message's speaker
+   * Get the last message's speaker (for conference mode)
    */
   public getLastSpeaker(): Speaker | undefined {
     if (this.messages.length === 0) return undefined;
-    const lastMsg = this.messages[this.messages.length - 1] as SpeakerMessage;
-    return lastMsg.speaker;
+    
+    const lastMsg = this.messages[this.messages.length - 1];
+    if (!lastMsg || lastMsg.role !== "user") return undefined;
+    
+    // Extract speaker from [CALLER]: or [OWNER]: prefix
+    const content = typeof lastMsg.content === 'string' ? lastMsg.content : '';
+    if (content.startsWith('[CALLER]:')) return Speaker.CALLER;
+    if (content.startsWith('[OWNER]:')) return Speaker.OWNER;
+    
+    return undefined;
   }
 
   /**

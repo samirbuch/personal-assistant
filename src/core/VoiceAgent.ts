@@ -7,11 +7,13 @@
 
 import type Bun from "bun";
 import type { LiveClient, SpeakLiveClient } from "@deepgram/sdk";
-import type { Experimental_Agent as Agent } from "ai";
+import type { Experimental_Agent as Agent, AssistantModelMessage } from "ai";
 import { VoiceAgentStateMachine, AgentState } from "./StateMachine";
 import { AudioController } from "./AudioController";
 import { ConversationManager, Speaker } from "./ConversationManager";
 import { InterruptionDetector } from "./InterruptionDetector";
+import type { ConferenceSession } from "./ConferenceSession";
+import type { TwilioWebsocket } from "../../lib/TwilioWebsocketTypes";
 
 export interface VoiceAgentConfig {
   ws: Bun.ServerWebSocket;
@@ -44,17 +46,17 @@ export class VoiceAgent {
   private agent!: Agent<{}, never, never>; // Will be set after construction
   private abortController: AbortController | null = null;
   private audioInFlight: boolean = false;
-  
+
   // Conference mode
-  private conferenceSession: any | null = null; // ConferenceSession reference (any to avoid circular dependency)
+  private conferenceSession: ConferenceSession | null = null; // ConferenceSession reference
 
   constructor(config: VoiceAgentConfig) {
     this.streamSid = config.streamSid;
     this.callSid = config.callSid;
     this.callerPhone = config.callerPhone;
-    this.role = config.role === "owner" ? AgentRole.OWNER : 
-                config.role === "caller" ? AgentRole.CALLER : 
-                AgentRole.SOLO;
+    this.role = config.role === "owner" ? AgentRole.OWNER :
+      config.role === "caller" ? AgentRole.CALLER :
+        AgentRole.SOLO;
     this.stt = config.stt;
     this.tts = config.tts;
     if (config.agent) {
@@ -89,7 +91,17 @@ export class VoiceAgent {
 
     // If in conference, route RAW AUDIO directly to the other call
     if (this.conferenceSession) {
-      this.conferenceSession.routeRawAudio(this.role!, mulawBase64);
+      switch (this.role) {
+        case AgentRole.CALLER: {
+          this.conferenceSession.routeRawAudio(Speaker.CALLER, mulawBase64);
+          break;
+        }
+        case AgentRole.OWNER: {
+          this.conferenceSession.routeRawAudio(Speaker.OWNER, mulawBase64);
+          break;
+        }
+      }
+
     }
 
     // Don't use audio-based interruption detection - rely on transcript-based only
@@ -109,15 +121,15 @@ export class VoiceAgent {
       await this.conferenceSession.onTranscript(speaker, transcript);
       return;
     }
-    
+
     // Solo mode - handle normally
     const currentState = this.stateMachine.getState();
-    
+
     // If we receive a transcript while SPEAKING, that's an interruption
     if (currentState === AgentState.SPEAKING) {
       console.log(`[VoiceAgent] User interrupted with: "${transcript}"`);
       this.handleInterruption();
-      
+
       // Add to conversation
       this.conversation.addUserMessage(transcript, speakerId);
 
@@ -128,7 +140,7 @@ export class VoiceAgent {
       await this.generateResponse();
       return;
     }
-    
+
     // Accept transcripts in LISTENING state
     if (currentState === AgentState.LISTENING) {
       console.log(`[VoiceAgent] User said: "${transcript}"`);
@@ -296,19 +308,30 @@ export class VoiceAgent {
       // Flush TTS
       if (this.stateMachine.is(AgentState.SPEAKING)) {
         this.tts.flush();
+
+        // Complete the partial message tracking
         this.conversation.completeAssistantMessage();
-        
+
+        // Add the FULL response (including tool calls/results) to conversation
+        // This ensures tool calls are properly tracked in conversation history
+        const response = await result.response;
+        this.conversation.addAssistantMessage(response.messages[0] as AssistantModelMessage);
+
         // Don't transition here - let handleTTSFlushed() handle the transition
         // This keeps us in SPEAKING state so interruptions can still be detected
       }
 
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log(`[VoiceAgent] LLM generation aborted`);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          console.log(`[VoiceAgent] LLM generation aborted`);
+        } else {
+          console.error(`[VoiceAgent] Error generating response:`, error);
+          // Return to listening on error
+          this.stateMachine.transition(AgentState.LISTENING, "Error occurred");
+        }
       } else {
-        console.error(`[VoiceAgent] Error generating response:`, error);
-        // Return to listening on error
-        this.stateMachine.transition(AgentState.LISTENING, "Error occurred");
+        console.error("Unknown VoiceAgent error:", error);
       }
     } finally {
       this.abortController = null;
@@ -321,9 +344,15 @@ export class VoiceAgent {
   public handleTTSAudio(audioBase64: string): void {
     // Track that we're receiving audio
     this.audioInFlight = true;
-    
+
+    // Log audio chunk size for debugging
+    console.log(`[VoiceAgent ${this.streamSid}] 🔊 TTS audio chunk: ${audioBase64.length} bytes, gate=${this.audio.isEnabled()}`);
+
     // Audio controller decides if it flows
-    this.audio.sendAudio(audioBase64);
+    const sent = this.audio.sendAudio(audioBase64);
+    if (!sent) {
+      console.warn(`[VoiceAgent ${this.streamSid}] ⚠️ Audio chunk DROPPED - gate closed!`);
+    }
   }
 
   /**
@@ -332,13 +361,20 @@ export class VoiceAgent {
   public handleTTSFlushed(): void {
     console.log(`[VoiceAgent] TTS flushed - all audio sent`);
     this.audioInFlight = false;
-    
-    // Transition to LISTENING now that audio is complete
+
+    // In conference mode, don't manage audio gates or state machine
+    // The conference controls when audio should flow
+    if (this.conferenceSession) {
+      console.log(`[VoiceAgent] Conference mode - keeping audio gate open`);
+      return;
+    }
+
+    // Solo mode: Transition to LISTENING now that audio is complete
     if (this.stateMachine.is(AgentState.SPEAKING)) {
       this.stateMachine.transition(AgentState.LISTENING, "Response complete");
     }
-    
-    // Disable audio gate
+
+    // Solo mode: Disable audio gate
     this.audio.disable();
   }
 
@@ -354,7 +390,7 @@ export class VoiceAgent {
         this.audio.enable();
         this.audioInFlight = false; // Reset audio tracking
       }
-      
+
       // When leaving SPEAKING state, disable audio only if no audio in flight
       if (oldState === AgentState.SPEAKING && newState === AgentState.LISTENING) {
         // Don't disable immediately - let handleTTSFlushed() handle it
@@ -371,7 +407,7 @@ export class VoiceAgent {
    */
   public cleanup(): void {
     console.log(`[VoiceAgent] Cleaning up...`);
-    
+
     if (this.abortController) {
       this.abortController.abort("cleanup");
     }
@@ -424,7 +460,7 @@ export class VoiceAgent {
    */
   public sendDTMF(digits: string): void {
     console.log(`[VoiceAgent] Sending DTMF: ${digits}`);
-    
+
     // Send each digit as a separate message
     for (const digit of digits) {
       const dtmfMessage = {
@@ -434,7 +470,7 @@ export class VoiceAgent {
           digit: digit
         }
       };
-      
+
       this.audio["ws"].send(JSON.stringify(dtmfMessage));
     }
   }
@@ -451,10 +487,10 @@ export class VoiceAgent {
    */
   public async transferToHuman(reason: string): Promise<void> {
     console.log(`[VoiceAgent] 🎙️  Transferring to human: ${reason}`);
-    
+
     const ownerPhone = process.env.OWNER_PHONE_NUMBER;
     const ownerName = process.env.OWNER_NAME || "a team member";
-    
+
     if (!ownerPhone) {
       throw new Error("OWNER_PHONE_NUMBER not configured");
     }
@@ -462,44 +498,44 @@ export class VoiceAgent {
     // Step 1: Announce the transfer to the caller
     console.log(`[VoiceAgent] Announcing transfer to caller...`);
     this.stateMachine.transition(AgentState.SPEAKING, "Announcing transfer to human");
-    
+
     const announcement = `One moment please, let me connect you with ${ownerName}.`;
-    
+
     // Send announcement to TTS
     this.audio.enable();
     this.tts.sendText(announcement);
     this.tts.flush();
-    
+
     // Wait for the announcement to be spoken
     console.log(`[VoiceAgent] Waiting for announcement to complete...`);
     await new Promise(resolve => setTimeout(resolve, 3500));
-    
+
     // Step 2: Initiate the conference via API
     console.log(`[VoiceAgent] Initiating dual-call conference...`);
-    
+
     const publicURL = process.env.PUBLIC_URL?.replace(/^https?:\/\//, "").replace(/\/$/, "");
     const port = process.env.PORT || 40451;
     const isNgrok = publicURL?.includes(".ngrok-free.app");
     const url = `http://${publicURL}${isNgrok ? "" : `:${port}`}/api/initiate-conference/${this.streamSid}`;
-    
+
     try {
-      const response = await fetch(url, { 
+      const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason })
       });
-      
+
       if (!response.ok) {
         throw new Error(`Failed to initiate conference: ${response.statusText}`);
       }
-      
+
       const data = await response.json() as { conferenceId: string };
       console.log(`[VoiceAgent] ✅ Conference ${data.conferenceId} initiated`);
       console.log(`[VoiceAgent] 🎙️  3-way call active - Jordan will respond when addressed`);
-      
+
       // Already in LISTENING state from the announcement, no need to transition
       // The agent is now in conference mode and will delegate to ConferenceSession
-      
+
     } catch (error) {
       console.error(`[VoiceAgent] Error initiating conference:`, error);
       // On error, ensure we're in listening state so conversation can continue
@@ -516,13 +552,13 @@ export class VoiceAgent {
    */
   public async hangUp(): Promise<void> {
     console.log(`[VoiceAgent] Hanging up call ${this.callSid}`);
-    
+
     // Use the hangup API endpoint
     const publicURL = process.env.PUBLIC_URL?.replace(/^https?:\/\//, "").replace(/\/$/, "");
     const port = process.env.PORT || 40451;
     const isNgrok = publicURL?.includes(".ngrok-free.app");
     const url = `http://${publicURL}${isNgrok ? "" : `:${port}`}/api/hangup/${this.streamSid}`;
-    
+
     try {
       const response = await fetch(url, { method: "POST" });
       if (!response.ok) {
@@ -537,7 +573,7 @@ export class VoiceAgent {
    * Join a conference session
    * Called when this agent becomes part of a paired conference
    */
-  public joinConference(conferenceSession: any): void {
+  public joinConference(conferenceSession: ConferenceSession): void {
     this.conferenceSession = conferenceSession;
     console.log(`[VoiceAgent ${this.streamSid}] Joined conference as ${this.role}`);
   }
@@ -554,7 +590,7 @@ export class VoiceAgent {
    * Send raw audio directly to Twilio (used for human-to-human audio routing in conference)
    */
   public sendRawAudio(mulawBase64: string): void {
-    const msg: any = {
+    const msg: TwilioWebsocket.Sendable.MediaMessage = {
       event: "media",
       streamSid: this.streamSid,
       media: { payload: mulawBase64 }
@@ -563,24 +599,60 @@ export class VoiceAgent {
   }
 
   /**
-   * Speak text directly (used by ConferenceSession for Jordan's responses)
-   * This bypasses the LLM and sends text directly to TTS
+   * Send Jordan's TTS audio to Twilio (used by ConferenceSession's single TTS)
+   * This enables the audio gate and sends the audio chunk
    */
-  public async speakText(text: string): Promise<void> {
-    console.log(`[VoiceAgent ${this.streamSid}] Speaking Jordan's text: "${text.slice(0, 50)}..."`);
-    
-    // Enable audio before sending (important for conference mode)
-    this.audio.enable();
-    
-    // Send the text to TTS and flush immediately
+  public sendJordanAudio(audioBase64: string): void {
+    // Enable audio gate if not already enabled
+    if (!this.audio.isEnabled()) {
+      console.log(`[VoiceAgent ${this.streamSid}] ✅ Enabling audio gate for Jordan's TTS`);
+      this.audio.enable();
+    }
+
+    // Send audio through the controller (respects the gate)
+    const sent = this.audio.sendAudio(audioBase64);
+    if (!sent) {
+      console.warn(`[VoiceAgent ${this.streamSid}] ⚠️ Jordan's audio DROPPED - gate closed!`);
+    }
+  }
+
+  /**
+   * Send text chunk to TTS (used by ConferenceSession for Jordan's streaming responses)
+   * Does NOT flush - call flushTTS() when done streaming
+   */
+  public async sendTextChunk(text: string): Promise<void> {
+    console.log(`[VoiceAgent ${this.streamSid}] 📝 Sending text chunk to TTS: "${text}" (${text.length} chars)`);
+
+    // Enable audio gate if not already enabled
+    if (!this.audio.isEnabled()) {
+      console.log(`[VoiceAgent ${this.streamSid}] ✅ Enabling audio gate for TTS`);
+      this.audio.enable();
+    }
+
+    // Send the text chunk to TTS (don't flush yet)
     this.tts.sendText(text);
-    this.tts.flush();
   }
 
   /**
    * Flush TTS buffer (used by ConferenceSession)
    */
   public async flushTTS(): Promise<void> {
+    console.log(`[VoiceAgent ${this.streamSid}] Flushing TTS`);
+    this.tts.flush();
+  }
+
+  /**
+   * Speak text directly (used for one-shot TTS)
+   * This sends text and flushes immediately
+   */
+  public async speakText(text: string): Promise<void> {
+    console.log(`[VoiceAgent ${this.streamSid}] Speaking text: "${text.slice(0, 50)}..."`);
+
+    // Enable audio before sending
+    this.audio.enable();
+
+    // Send the text to TTS and flush immediately
+    this.tts.sendText(text);
     this.tts.flush();
   }
 
@@ -596,5 +668,19 @@ export class VoiceAgent {
    */
   public isInConference(): boolean {
     return this.conferenceSession !== null;
+  }
+
+  /**
+   * Get stream SID
+   */
+  public getStreamSid(): string {
+    return this.streamSid;
+  }
+
+  /**
+   * Get WebSocket connection
+   */
+  public getWebSocket(): any {
+    return this.audio.ws;
   }
 }

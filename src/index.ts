@@ -106,13 +106,13 @@ Bun.serve({
       try {
         const body = await req.json() as { reason?: string };
         const reason = body.reason || "User requested human assistance";
-        
+
         // Create the conference session and move caller into it
         const conferenceId = await initiateConference(streamSid, reason);
-        
+
         // Initiate the call to the owner
         const ownerCall = await initiateOwnerCall(process.env.OWNER_PHONE_NUMBER, conferenceId);
-        
+
         console.log(`[API] Conference ${conferenceId} created, owner call ${ownerCall.callSid} initiated`);
 
         return new Response(JSON.stringify({
@@ -124,15 +124,19 @@ Bun.serve({
         }), {
           headers: { "Content-Type": "application/json" }
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(`[API] Error initiating conference for ${streamSid}:`, error);
-        return new Response(JSON.stringify({
-          success: false,
-          error: error.message || "Error initiating conference"
-        }), { 
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        });
+        if (error instanceof Error) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: error.message || "Error initiating conference"
+          }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" }
+          });
+        } else {
+          console.error("Unknown error type");
+        }
       }
     },
 
@@ -147,9 +151,9 @@ Bun.serve({
         const event = formData.get('StatusCallbackEvent');
         const conferenceSid = formData.get('ConferenceSid');
         const participantLabel = formData.get('ParticipantLabel');
-        
+
         console.log(`[Conference] Event: ${event}, Conference: ${conferenceSid}, Participant: ${participantLabel}`);
-        
+
         return new Response("OK");
       } catch (error) {
         console.error(`[API] Error handling conference status:`, error);
@@ -191,7 +195,7 @@ Bun.serve({
         name: "Voice Agent Stream",
         url: wsURL
       });
-      
+
       // Add custom parameters to pass caller info to WebSocket
       stream.parameter({ name: 'from', value: from });
       stream.parameter({ name: 'to', value: to });

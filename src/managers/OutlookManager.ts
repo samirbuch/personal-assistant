@@ -436,9 +436,9 @@ export class OutlookManager {
       // Event starts before our range ends AND event ends after our range starts
       const overlaps = eventStart < endDate && eventEnd > startDate;
       
-      if (!overlaps) {
-        console.log(`[OutlookManager]   Excluding "${event.subject}" (${eventStart.toISOString()} - ${eventEnd.toISOString()})`);
-      }
+      // if (!overlaps) {
+      //   console.log(`[OutlookManager]   Excluding "${event.subject}" (${eventStart.toISOString()} - ${eventEnd.toISOString()})`);
+      // }
       
       return overlaps;
     });

@@ -4,7 +4,7 @@
  * Creates and configures Deepgram STT/TTS connections
  */
 
-import { createClient, LiveTranscriptionEvents, LiveTTSEvents, type LiveClient, type SpeakLiveClient } from "@deepgram/sdk";
+import { createClient, LiveTranscriptionEvents, LiveTTSEvents, type LiveClient, type LiveSchema, type SpeakLiveClient } from "@deepgram/sdk";
 import type { VoiceAgent } from "../core/VoiceAgent";
 
 const deepgramClient = createClient(process.env.DEEPGRAM_ACCESS_TOKEN);
@@ -18,7 +18,7 @@ export interface TranscriptWithSpeaker {
 }
 
 export function createSTT(enableDiarization: boolean = false): LiveClient {
-  const options: any = {
+  const options: LiveSchema = {
     model: "nova-3",
     encoding: "mulaw",
     sample_rate: 8000,

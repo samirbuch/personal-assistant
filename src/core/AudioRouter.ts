@@ -6,7 +6,7 @@
  */
 
 import { shouldAssistantRespond } from "../managers/ResponseGatekeeper";
-import type { CoreMessage } from "ai";
+import type { ModelMessage } from "ai";
 import { Speaker } from "./ConversationManager";
 
 export interface AudioRoutingDecision {
@@ -26,7 +26,7 @@ export class AudioRouter {
   async route(
     speaker: Speaker.CALLER | Speaker.OWNER,
     transcript: string,
-    conversationHistory: CoreMessage[]
+    conversationHistory: ModelMessage[]
   ): Promise<AudioRoutingDecision> {
     
     // Ask ResponseGatekeeper if Jordan should respond

@@ -130,7 +130,6 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent) {
       }
     }
   });
-
   // Only add tools if voiceAgent is provided (after initialization)
   if (voiceAgent) {
     tools.transferToHuman = tool({
