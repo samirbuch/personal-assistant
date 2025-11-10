@@ -24,8 +24,9 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '20'
-          cache: 'yarn'
-          cache-dependency-path: documentation/yarn.lock
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Create or verify gh-pages branch
         run: |
@@ -47,14 +48,14 @@ jobs:
           fi
 
       - name: Install Dependencies
-        run: cd documentation && yarn install
+        run: cd docs && bun install
 
       - name: Generate Dependencies Page
         if: github.repository_owner == 'applebaumian'
-        run: node documentation/scripts/generate-dependencies.js
+        run: node docs/scripts/generate-dependencies.js
 
       - name: Deploy to GitHub Pages
         run: |
           export ORG_NAME=$(echo ${GITHUB_REPOSITORY%/*})
           export PROJECT_NAME=$(echo ${GITHUB_REPOSITORY#*/})
-          cd documentation && NODE_ENV="production" GIT_USER="github-actions[bot]" GIT_PASS="${{ secrets.GITHUB_TOKEN }}" yarn deploy
+          cd docs && NODE_ENV="production" GIT_USER="github-actions[bot]" GIT_PASS="${{ secrets.GITHUB_TOKEN }}" bun run deploy

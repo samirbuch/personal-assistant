@@ -141,7 +141,7 @@ const config: Config = {
       items: [
         {
           type: 'docSidebar',
-          sidebarId: 'tutorialSidebar',
+          sidebarId: 'docsSidebar',
           position: 'left',
           label: 'Documentation',
         },
@@ -222,7 +222,7 @@ const config: Config = {
 
   scripts: [
     'https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js',
-    ...main_template_jira_scripts()
+    // ...main_template_jira_scripts()
   ],
 };
 
