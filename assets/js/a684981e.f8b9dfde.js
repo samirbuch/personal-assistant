@@ -1,0 +1,1 @@
+"use strict";(globalThis.webpackChunkpersonal_assistant_docs=globalThis.webpackChunkpersonal_assistant_docs||[]).push([[1059],{99451:s=>{s.exports=JSON.parse('{"name":"docusaurus-plugin-redoc","id":"using-single-yaml"}')}}]);

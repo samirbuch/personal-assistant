@@ -1,0 +1,1 @@
+"use strict";(globalThis.webpackChunkpersonal_assistant_docs=globalThis.webpackChunkpersonal_assistant_docs||[]).push([[1903],{1912:s=>{s.exports=JSON.parse('{"blogBasePath":"/personal-assistant/blog","blogTitle":"Blog","authorsListPath":"/personal-assistant/blog/authors"}')}}]);

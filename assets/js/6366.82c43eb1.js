@@ -1,0 +1,1 @@
+"use strict";(globalThis.webpackChunkpersonal_assistant_docs=globalThis.webpackChunkpersonal_assistant_docs||[]).push([[6366],{86366:(s,a,e)=>{e.d(a,{createArchitectureServices:()=>c.S});var c=e(38980);e(87960)}}]);

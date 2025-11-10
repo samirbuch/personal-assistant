@@ -1,0 +1,1 @@
+"use strict";(globalThis.webpackChunkpersonal_assistant_docs=globalThis.webpackChunkpersonal_assistant_docs||[]).push([[7499],{86657:s=>{s.exports=JSON.parse('{"metadata":{"permalink":"/personal-assistant/blog","page":1,"postsPerPage":10,"totalPages":1,"totalCount":4,"blogDescription":"Blog","blogTitle":"Blog"}}')}}]);
