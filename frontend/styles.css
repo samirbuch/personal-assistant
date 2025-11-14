@@ -1,0 +1,29 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing: border-box;
+}
+
+#appointment-form{
+    min-width: 400px;
+    max-width: 1000px;
+    margin: 200px auto;
+}
+.nav-bar{
+    justify-content: space-between;
+    display:flex;
+    align-items: center;
+    background-color: #e3e5e8;
+    padding: 20px;
+    min-width: 1000px;
+}
+
+#login-form{
+    display:flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.form-entry, button{
+    margin: 15px;
+}
