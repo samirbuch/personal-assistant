@@ -4,13 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register Account</title>
     <link rel="stylesheet" href="styles.css">
-    <script src="./script.js" defer></script>
-    <title>frontend</title>
 </head>
 
 <body>
-
     <div class="nav-bar">
         <h1>Personal Voice Assistant</h1>
         <form action="" id="login-form">
@@ -26,14 +24,18 @@
         </form>
     </div>
 
-    <div class="welcome">
-        <div class="register welcome-card">
-            <a href="./register.html">Register Account</a>
+    <form>
+        <div class="form-entry">
+            <label for="username">Username</label>
+            <input type="text" name="username" id="username">
         </div>
-        <div class="schedule welcome-card">
-            <a href="./schedule.html">Schedule Appointment</a>
+        <div class="form-entry">
+            <label for="password">Password</label>
+            <input type="text">
         </div>
-    </div>
+
+        <button>Create Account</button>
+    </form>
 </body>
 
 </html>

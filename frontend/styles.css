@@ -27,3 +27,25 @@
 .form-entry, button{
     margin: 15px;
 }
+
+.welcome{
+    padding: 200px 0;
+    display:flex;
+    gap: 50px;
+    justify-self: center;;
+}
+
+.welcome-card{
+    text-align: center;
+    background-color: blue;
+    padding: 25px;
+}
+
+a{
+    color: white;
+    text-decoration: none;
+}
+
+a:visited{
+    color: white;
+}

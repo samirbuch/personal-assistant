@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="nav-bar">
+        <h1>Personal Voice Assistant</h1>
+        <form action="" id="login-form">
+            <div class="form-entry">
+                <label for="username">Username</label>
+                <input type="text" name="username" id="username">
+            </div>
+            <div class="form-entry">
+                <label for="password">Password</label>
+                <input type="password" name="password" id="password">
+            </div>
+            <button>login</button>
+        </form>
+    </div>
+    
+    <form action="" id="appointment-form">
+
+        <div class="form-entry">
+            <label for="appt-type">Appointment type</label>
+            <input type="text" name="appt-type" id="appt-type">
+        </div>
+
+        <div class="form-entry">
+            <label for="zip">Zip Code</label>
+            <input type="number" name="zip" id="zip">
+        </div>
+
+        <div class="form-entry">
+            <label for="appt-time">Preferred day</label>
+            <input type="date" name="appt-time" id="appt-time" value="2024-06-01" min="2024-01-01" max="2024-12-31">
+        </div>
+
+        <div class="form-entry">
+            <label for="start-time">No earlier than</label>
+            <input type="time" name="start-time" id="start-time" value="09:00">
+        </div>
+
+        <div class="form-entry end">
+            <label for="end-time">No later than</label>
+            <input type="time" name="end-me" id="end-time" value="10:00">
+        </div>
+
+        <button>submit</button>
+    </form>
+
+</body>
+</html>
