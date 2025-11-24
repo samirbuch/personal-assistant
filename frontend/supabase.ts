@@ -2,6 +2,7 @@
 
 // Import Supabase via CDN (if using type="module" in HTML)
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+import {createClient} from '@supabase/supabase-js'
 // import { en } from 'zod/locales';
 
 // Replace these with your Supabase project info
@@ -20,6 +21,20 @@ async function fetchTest() {
     } else {
         console.log('Data:', data);
     }
+}
+
+export async function getProfile(userID: String) {
+    const {data, error} = await supabase
+    .from('User')
+    .select('first_name, last_name, phone_number, email, latitude, longitude')
+    .eq('id',userID) //WHERE
+    .single() //return 1 object;
+    
+    if(error){
+        console.error('[supabase] error fetching user', error);
+        return null;
+    }
+    return data;
 }
 
 // const { data, error } = await supabase

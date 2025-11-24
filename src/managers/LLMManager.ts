@@ -13,7 +13,14 @@ import { OutlookManager, type TimeSlot, type CalendarEvent } from "./OutlookMana
 const systemPromptURL = new URL("../assets/system-prompt.txt", import.meta.url);
 const systemPrompt = Bun.file(systemPromptURL)
 
-export async function createLLMAgent(voiceAgent?: VoiceAgent) {
+interface UserContext{
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+}
+
+export async function createLLMAgent(voiceAgent?: VoiceAgent, userContext?:UserContext) {
   const tools: Record<string, any> = {};
   
   // Initialize Outlook manager (available to all instances)
@@ -176,17 +183,27 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent) {
         return { success: true, message: "Call ended" };
       }
     });
+
+    //WHAT I WROTE
+    let promptText = await systemPrompt.text();
+    if (userContext) {
+    promptText = promptText
+      .replace(/{{USER_NAME}}/g, userContext.first_name)
+      .replace(/{{USER_PHONE}}/g, userContext.phone)
+      .replace(/{{USER_EMAIL}}/g, userContext.email);
   }
+  
 
   console.log("System prompt:", await systemPrompt.text())
 
   return new Agent({
     model: anthropic("claude-3-5-haiku-latest"),
     system: `
-    ${await systemPrompt.text()}
+    ${promptText}
     Today's date is ${new Date().toISOString()}
     `,
     tools,
     stopWhen: stepCountIs(20)
   });
+}
 }

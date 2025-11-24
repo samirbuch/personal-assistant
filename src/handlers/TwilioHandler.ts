@@ -9,7 +9,7 @@ import { SessionManager } from "../managers/SessionManager";
 import { VoiceAgent } from "../core/VoiceAgent";
 import { createSTT, createTTS, setupSTTHandlers, setupTTSHandlers } from "../managers/DeepgramManager";
 import { createLLMAgent } from "../managers/LLMManager";
-import { ConferenceManager } from "../managers/ConferenceManager";
+import { getProfile } from "../../frontend/supabase";
 
 const sessions = new SessionManager();
 
@@ -29,6 +29,23 @@ export async function handleStart(
   console.log(`  Call: ${callSid}`);
   if (callerFrom) console.log(`  📱 From: ${callerFrom}`);
   if (callerTo) console.log(`  📱 To: ${callerTo}`);
+  if (conferenceId) console.log(`  🎙️  Conference: ${conferenceId}`);
+  if (role) console.log(`  👤 Role: ${role}`);
+
+  //user data
+  let userContext = undefined;
+  if(userID){
+    console.log('twillio fetching userID for ${userID}');
+    const profile = await getProfile(userID);
+    if(profile){
+      userContext = {
+        first_name: profile.first_name,
+        last_name: profile.last_name || "",
+        phone: profile.phone_number,
+        email: profile.email
+      };
+    }
+  }
 
   // Create Deepgram connections
   const stt = createSTT();
@@ -44,7 +61,7 @@ export async function handleStart(
   });
 
   // Create LLM agent with tools that reference voiceAgent
-  const agent = await createLLMAgent(voiceAgent);
+  const agent = await createLLMAgent(voiceAgent, userContext);
   voiceAgent.setAgent(agent);
 
   // Set up handlers
