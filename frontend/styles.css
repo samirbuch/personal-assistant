@@ -1,0 +1,61 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing: border-box;
+}
+
+#appointment-form{
+    min-width: 400px;
+    max-width: 1000px;
+    margin: 200px auto;
+}
+
+nav {
+    justify-content: space-between;
+    display:flex;
+    align-items: center;
+    background-color: #e3e5e8;
+    padding: 20px;
+    min-width: 1000px;
+}
+
+#login-form {
+    display:flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.form-entry, button {
+    margin: 15px;
+}
+
+.welcome {
+    height: 90vh;
+    display: flex;
+    gap: 50px;
+    justify-self: center;
+    align-items: center;
+}
+
+.welcome-card {
+    display: flex;
+    height: 100px;
+    text-align: center;
+    background-color: blue;
+    padding: 0 55px;
+    align-items: center;
+}
+
+a {
+    color: white;
+    text-decoration: none;
+}
+
+a:visited{
+    color: white;
+}
+
+body {
+    background-image: url("./imgs/maps-transparent.webp");
+    background-size: cover;
+}

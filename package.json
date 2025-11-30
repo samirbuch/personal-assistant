@@ -26,6 +26,7 @@
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "ai": "^5.0.68",
     "alawmulaw": "^6.0.0",
+    "dotenv": "^17.2.3",
     "twilio": "^5.10.2",
     "zod": "^4.1.12"
   },
