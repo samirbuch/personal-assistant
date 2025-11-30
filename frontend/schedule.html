@@ -6,7 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
     <link rel="stylesheet" href="styles.css">
-    <script type="module" src="./supabase.js" defer></script>
+    <script type="module" src="./scripts/supabase.js"></script>
+    <script type="module" src="./scripts/schedule.js"></script>
+    <script src="./scripts/account-actions.js" type="module"></script>
 </head>
 
 <body>
@@ -16,8 +18,8 @@
         </h1>
         <form action="" id="login-form">
             <div class="form-entry">
-                <label for="username">Username</label>
-                <input type="text" name="username" id="username">
+                <label for="email">Email</label>
+                <input type="text" name="email" id="email">
             </div>
             <div class="form-entry">
                 <label for="password">Password</label>

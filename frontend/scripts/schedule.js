@@ -1,6 +1,4 @@
 
-
-
 let endtime = document.getElementById("end-time");
 let starttime = document.getElementById("start-time");
 
@@ -34,3 +32,8 @@ endtime.addEventListener("change", () => {
         console.log(end)
     }
 })
+
+let formDataHTML = document.querySelector("#appointment-form");
+let formData = new FormData(formDataHTML);
+
+console.log(formData);
