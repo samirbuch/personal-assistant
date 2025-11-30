@@ -28,9 +28,9 @@ export class ConferenceManager {
   }
 
   /**
-   * Create a conference call with the owner (Option 2 Implementation)
+   * Create a conference call with the owner
    * 
-   * ARCHITECTURE NOTES (Option 2):
+   * ARCHITECTURE NOTES:
    * ==============================
    * 1. Original call has a media stream attached (AI is working)
    * 2. AI announces the transfer and prepares to disconnect
@@ -39,10 +39,6 @@ export class ConferenceManager {
    * 5. **The media stream WILL permanently disconnect** - this is expected Twilio behavior
    * 6. Caller and owner continue in conference WITHOUT the AI
    * 
-   * This is Option 2: "Graceful Disconnect"
-   * - Simple and clean implementation
-   * - Works within Twilio's platform limitations
-   * - AI gracefully exits, humans continue talking
    * 
    * @param callSid The current call SID
    * @param streamSid The stream SID (used for conference naming)

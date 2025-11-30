@@ -111,16 +111,8 @@ export class VoiceAgent {
   /**
    * Handle user transcript from STT
    * @param transcript The transcribed text
-   * @param speakerId Optional speaker ID from diarization (used in conference mode)
    */
-  public async handleTranscript(transcript: string, speakerId?: number): Promise<void> {
-    // If in conference mode, delegate to ConferenceSession
-    if (this.conferenceSession) {
-      const speaker = this.role === AgentRole.CALLER ? Speaker.CALLER : Speaker.OWNER;
-      console.log(`[VoiceAgent ${this.streamSid}] Conference mode - delegating transcript to ConferenceSession`);
-      await this.conferenceSession.onTranscript(speaker, transcript);
-      return;
-    }
+  public async handleTranscript(transcript: string): Promise<void> {
 
     // Solo mode - handle normally
     const currentState = this.stateMachine.getState();
@@ -131,7 +123,7 @@ export class VoiceAgent {
       this.handleInterruption();
 
       // Add to conversation
-      this.conversation.addUserMessage(transcript, speakerId);
+      this.conversation.addUserMessage(transcript);
 
       // Transition to thinking
       this.stateMachine.transition(AgentState.THINKING, "Processing user input");
@@ -146,7 +138,7 @@ export class VoiceAgent {
       console.log(`[VoiceAgent] User said: "${transcript}"`);
 
       // Add to conversation
-      this.conversation.addUserMessage(transcript, speakerId);
+      this.conversation.addUserMessage(transcript);
 
       // Transition to thinking
       this.stateMachine.transition(AgentState.THINKING, "Processing user input");
@@ -346,7 +338,7 @@ export class VoiceAgent {
     this.audioInFlight = true;
 
     // Log audio chunk size for debugging
-    console.log(`[VoiceAgent ${this.streamSid}] 🔊 TTS audio chunk: ${audioBase64.length} bytes, gate=${this.audio.isEnabled()}`);
+    // console.log(`[VoiceAgent ${this.streamSid}] 🔊 TTS audio chunk: ${audioBase64.length} bytes, gate=${this.audio.isEnabled()}`);
 
     // Audio controller decides if it flows
     const sent = this.audio.sendAudio(audioBase64);
@@ -362,19 +354,12 @@ export class VoiceAgent {
     console.log(`[VoiceAgent] TTS flushed - all audio sent`);
     this.audioInFlight = false;
 
-    // In conference mode, don't manage audio gates or state machine
-    // The conference controls when audio should flow
-    if (this.conferenceSession) {
-      console.log(`[VoiceAgent] Conference mode - keeping audio gate open`);
-      return;
-    }
-
-    // Solo mode: Transition to LISTENING now that audio is complete
+    // Transition to LISTENING now that audio is complete
     if (this.stateMachine.is(AgentState.SPEAKING)) {
       this.stateMachine.transition(AgentState.LISTENING, "Response complete");
     }
 
-    // Solo mode: Disable audio gate
+    // Disable audio gate
     this.audio.disable();
   }
 
@@ -596,41 +581,6 @@ export class VoiceAgent {
       media: { payload: mulawBase64 }
     };
     this.audio.ws.send(JSON.stringify(msg));
-  }
-
-  /**
-   * Send Jordan's TTS audio to Twilio (used by ConferenceSession's single TTS)
-   * This enables the audio gate and sends the audio chunk
-   */
-  public sendJordanAudio(audioBase64: string): void {
-    // Enable audio gate if not already enabled
-    if (!this.audio.isEnabled()) {
-      console.log(`[VoiceAgent ${this.streamSid}] ✅ Enabling audio gate for Jordan's TTS`);
-      this.audio.enable();
-    }
-
-    // Send audio through the controller (respects the gate)
-    const sent = this.audio.sendAudio(audioBase64);
-    if (!sent) {
-      console.warn(`[VoiceAgent ${this.streamSid}] ⚠️ Jordan's audio DROPPED - gate closed!`);
-    }
-  }
-
-  /**
-   * Send text chunk to TTS (used by ConferenceSession for Jordan's streaming responses)
-   * Does NOT flush - call flushTTS() when done streaming
-   */
-  public async sendTextChunk(text: string): Promise<void> {
-    console.log(`[VoiceAgent ${this.streamSid}] 📝 Sending text chunk to TTS: "${text}" (${text.length} chars)`);
-
-    // Enable audio gate if not already enabled
-    if (!this.audio.isEnabled()) {
-      console.log(`[VoiceAgent ${this.streamSid}] ✅ Enabling audio gate for TTS`);
-      this.audio.enable();
-    }
-
-    // Send the text chunk to TTS (don't flush yet)
-    this.tts.sendText(text);
   }
 
   /**
