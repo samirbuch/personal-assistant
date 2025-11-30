@@ -1,7 +1,9 @@
 import { supabase } from "./supabase.js";
+
 const loginForm = document.getElementById("login-form");
 const loginFormDiv = document.querySelector("div#navbar-login");
 const userInfoDiv = document.querySelector("div#navbar-userinfo");
+const signOutButton = document.getElementById("button-sign-out");
 
 supabase.auth.onAuthStateChange((event, session) => {
   console.log("AUTH STATE CHANGED", event, session);
@@ -76,3 +78,8 @@ async function signIn() {
 
   console.log("signed in!", data);
 }
+
+signOutButton.addEventListener("click", (e) => {
+  e.preventDefault();
+  supabase.auth.signOut();
+})
