@@ -8,7 +8,6 @@ import Twilio from "twilio";
 import * as Bun from "bun";
 import { TwilioWebsocket } from "../lib/TwilioWebsocketTypes";
 import { handleStart, handleMedia, handleStop, initiateConference } from "./handlers/TwilioHandler";
-import { initiateOwnerCall } from "./utils/CallInitiator";
 
 const PORT = process.env.PORT || 40451;
 
@@ -104,23 +103,24 @@ Bun.serve({
       }
 
       try {
-        const body = await req.json() as { reason?: string };
+        const body = await req.json() as { reason?: string; callSid?: string };
         const reason = body.reason || "User requested human assistance";
+        const callSid = body.callSid;
 
-        // Create the conference session and move caller into it
-        const conferenceId = await initiateConference(streamSid, reason);
+        if (!callSid) {
+          return new Response("Missing callSid", { status: 400 });
+        }
 
-        // Initiate the call to the owner
-        const ownerCall = await initiateOwnerCall(process.env.OWNER_PHONE_NUMBER, conferenceId);
+        // Use native Twilio conference (AI will disconnect)
+        const conferenceName = await initiateConference(streamSid, callSid, reason);
 
-        console.log(`[API] Conference ${conferenceId} created, owner call ${ownerCall.callSid} initiated`);
+        console.log(`[API] Native conference created for ${streamSid}`);
 
         return new Response(JSON.stringify({
           success: true,
-          conferenceId,
+          conferenceName,
           streamSid,
-          ownerCallSid: ownerCall.callSid,
-          message: "Dual-call conference initiated"
+          message: "Native Twilio conference initiated"
         }), {
           headers: { "Content-Type": "application/json" }
         });

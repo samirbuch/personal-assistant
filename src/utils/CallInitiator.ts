@@ -14,15 +14,13 @@ export interface CallInfo {
 }
 
 /**
- * Initiate a call to the owner for conference purposes
+ * Initiate a call to the owner
  * 
  * @param ownerPhone Owner's phone number
- * @param conferenceId Unique ID for this conference (used in custom parameters)
  * @returns Call information
  */
 export async function initiateOwnerCall(
-  ownerPhone: string,
-  conferenceId: string
+  ownerPhone: string
 ): Promise<CallInfo> {
   const twilioClient = Twilio(
     process.env.TWILIO_SID,
@@ -35,7 +33,6 @@ export async function initiateOwnerCall(
   const wsUrl = `wss://${publicURL}${isNgrok ? "" : `:${port}`}/twilio-ws`;
 
   console.log(`[CallInitiator] Initiating call to owner: ${ownerPhone}`);
-  console.log(`[CallInitiator] Conference ID: ${conferenceId}`);
   console.log(`[CallInitiator] WebSocket URL: ${wsUrl}`);
 
   try {
@@ -44,7 +41,6 @@ export async function initiateOwnerCall(
       <Response>
         <Connect>
           <Stream url="${wsUrl}">
-            <Parameter name="conferenceId" value="${conferenceId}" />
             <Parameter name="role" value="owner" />
           </Stream>
         </Connect>
