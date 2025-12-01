@@ -6,7 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
     <link rel="stylesheet" href="styles.css">
-    <script type="module" src="./supabase.js" defer></script>
+    <script type="module" src="./scripts/supabase.js"></script>
+    <script type="module" src="./scripts/schedule.js"></script>
+    <script src="./scripts/navbar.js" type="module"></script>
 </head>
 
 <body>
@@ -14,17 +16,23 @@
         <h1>
             <a href="./index.html">Personal Voice Assistant</a>
         </h1>
-        <form action="" id="login-form">
-            <div class="form-entry">
-                <label for="username">Username</label>
-                <input type="text" name="username" id="username">
-            </div>
-            <div class="form-entry">
-                <label for="password">Password</label>
-                <input type="password" name="password" id="password">
-            </div>
-            <button>login</button>
-        </form>
+        <div id="navbar-login" class="displayNone">
+            <form id="login-form">
+                <div class="form-entry">
+                    <label for="email">Email</label>
+                    <input type="text" name="email" id="email">
+                </div>
+                <div class="form-entry">
+                    <label for="password">Password</label>
+                    <input type="password" name="password" id="password">
+                </div>
+                <button>login</button>
+            </form>
+        </div>
+        <div id="navbar-userinfo" class="displayNone">
+            <p id="navbar-userinfo-email"></p>
+            <button id="button-sign-out">Sign Out</button>
+        </div>
     </nav>
 
     <form id="appointment-form">
