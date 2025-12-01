@@ -8,6 +8,7 @@ import Twilio from "twilio";
 import * as Bun from "bun";
 import { TwilioWebsocket } from "../lib/TwilioWebsocketTypes";
 import { handleStart, handleMedia, handleStop, initiateConference } from "./handlers/TwilioHandler";
+import UserContextualSupabase from "./core/UserContextualSupabase";
 
 const PORT = process.env.PORT || 40451;
 
@@ -204,6 +205,24 @@ Bun.serve({
 
       return new Response(response.toString(), {
         headers: { "Content-Type": "text/xml" }
+      });
+    },
+
+    "/api/test-user": async (req) => {
+      const c = new UserContextualSupabase(req);
+      const { data: { user }, error } = await c.client.auth.getUser();
+
+      if(error) {
+        console.error("get user error:", error);
+        return;
+      }
+
+      console.log("Got user info!", user);
+
+      return new Response(JSON.stringify({ user }), {
+        headers: {
+          "Content-Type": "application/json"
+        }
       });
     }
   },

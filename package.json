@@ -24,6 +24,8 @@
     "@azure/msal-node": "^3.8.0",
     "@deepgram/sdk": "^4.11.2",
     "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.86.0",
     "ai": "^5.0.68",
     "alawmulaw": "^6.0.0",
     "dotenv": "^17.2.3",

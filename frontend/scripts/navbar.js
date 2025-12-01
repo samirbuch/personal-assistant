@@ -44,6 +44,8 @@ export async function showUserData() {
   const p = document.querySelector("#navbar-userinfo-email");
   p.innerText = email;
   userInfoDiv.classList.remove("displayNone");
+
+  fetch("http://localhost:40451/api/test-user");
 }
 
 loginForm.addEventListener("submit", (e) => {
