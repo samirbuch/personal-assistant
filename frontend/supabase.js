@@ -22,6 +22,8 @@ async function fetchTest() {
     }
 }
 
+
+
 // const { data, error } = await supabase
 //     .from('to-be-scheduled')
 //     .insert([{ appointment_type: "test appointment",
@@ -32,10 +34,17 @@ async function fetchTest() {
 //      }])
 //     .select();
 
-let formDataHTML = document.querySelector("#appointment-form");
-let formData = new FormData(formDataHTML);
 
-console.log(formData);
+const { data, error } = await supabase
+  .from('cities')
+  .select();
+
+
+  console.log(data);
+// let formDataHTML = document.querySelector("#appointment-form");
+// let formData = new FormData(formDataHTML);
+
+// console.log(formData);
 
 // console.log(data);
 // console.log(error);
