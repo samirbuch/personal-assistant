@@ -5,9 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles.css">
-    <!-- <script type="module" src="./supabase.js" defer></script> -->
-    <script src="./script.js" defer></script>
-    <title>frontend</title>
+    <title>Scheduled Appointments</title>
 </head>
 
 <body>
@@ -29,14 +27,25 @@
         </form>
     </nav>
 
-    <div class="welcome">
-        <div class="register welcome-card">
-            <a href="./register.html">Register Account</a>
-        </div>
-        <div class="schedule welcome-card">
-            <a href="./schedule.html">Schedule Appointment</a>
-        </div>
+    <div class="appointments-container">
+        <h2>Scheduled Appointments</h2>
+        <table id="appointments-table">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Date</th>
+                    <th>Location</th>
+                    <th>Start Time</th>
+                    <th>Phone Number</th>
+                </tr>
+            </thead>
+            <tbody id="appointments-body">
+                <!-- Appointments go HEREEEEEEEE-->
+            </tbody>
+        </table>
     </div>
+
+    <script type="module" src="./fetch-appointments.js"></script>
 </body>
 
 </html>
