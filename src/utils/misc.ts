@@ -2,7 +2,7 @@ import supabaseAdmin from "../lib/supabaseAdmin";
 
 export async function getProfile(userID: string) {
   const { data, error } = await supabaseAdmin
-    .from("Users")
+    .from("User")
     .select("*")
     .eq("user_id", userID)
     .single();

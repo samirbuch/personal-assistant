@@ -12,7 +12,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function getProfile(userID) {
   const { data, error } = await supabase
-    .from("Users")
+    .from("User")
     .select("*")
     .eq("user_id", userID)
     .single();
