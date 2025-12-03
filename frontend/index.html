@@ -9,22 +9,12 @@
     <script src="./script.js" defer></script>
     <title>frontend</title>
 </head>
-<nav>
-    <h1><a href="./index.html">Personal Voice Assistant</a></h1>
-    <form action="" id="login-form">
-        <div class="form-entry">
-            <label for="username">Username</label>
-            <input type="text" name="username" id="username">
-        </div>
-        <div class="form-entry">
-            <label for="password">Password</label>
-            <input type="password" name="password" id="password">
-        </div>
-        <button>login</button>
-    </form>
-</nav>
 
-        <body>
+<body>
+    <nav>
+        <h1>
+            <a href="./index.html">Personal Voice Assistant</a>
+        </h1>
 
             <div class="welcome">
                 <div class="register welcome-card">
@@ -36,7 +26,27 @@
                 <div class="view welcome-card">
                     <a href="./appointments.html">View Appointments</a>
                 </div>
+        <form action="" id="login-form">
+            <div class="form-entry">
+                <label for="username">Username</label>
+                <input type="text" name="username" id="username">
             </div>
-        </body>
+            <div class="form-entry">
+                <label for="password">Password</label>
+                <input type="password" name="password" id="password">
+            </div>
+            <button>login</button>
+        </form>
+    </nav>
+
+    <div class="welcome">
+        <div class="register welcome-card">
+            <a href="./register.html">Register Account</a>
+        </div>
+        <div class="schedule welcome-card">
+            <a href="./schedule.html">Schedule Appointment</a>
+        </div>
+    </div>
+</body>
 
 </html>

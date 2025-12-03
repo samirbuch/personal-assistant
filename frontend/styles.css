@@ -9,7 +9,8 @@
     max-width: 1000px;
     margin: 200px auto;
 }
-nav{
+
+nav {
     justify-content: space-between;
     display:flex;
     align-items: center;
@@ -18,26 +19,25 @@ nav{
     min-width: 1000px;
 }
 
-#login-form{
+#login-form {
     display:flex;
     align-items: center;
     justify-content: space-between;
 }
 
-.form-entry, button{
+.form-entry, button {
     margin: 15px;
 }
 
-.welcome{
+.welcome {
     height: 90vh;
-    display:flex;
+    display: flex;
     gap: 50px;
     justify-self: center;
     align-items: center;
-
 }
 
-.welcome-card{
+.welcome-card {
     display: flex;
     height: 100px;
     text-align: center;
@@ -46,7 +46,7 @@ nav{
     align-items: center;
 }
 
-a{
+a {
     color: white;
     text-decoration: none;
 }
@@ -54,7 +54,8 @@ a{
 a:visited{
     color: white;
 }
-body{
-        background-image: url("./imgs/maps-transparent.webp");
 
+body {
+    background-image: url("./imgs/maps-transparent.webp");
+    background-size: cover;
 }
