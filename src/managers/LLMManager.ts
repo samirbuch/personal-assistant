@@ -9,13 +9,21 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import type { VoiceAgent } from "../core/VoiceAgent";
 import { OutlookManager, type TimeSlot, type CalendarEvent } from "./OutlookManager";
+import { getProfile } from "../utils/misc";
 
 const systemPromptURL = new URL("../assets/system-prompt.txt", import.meta.url);
-const systemPrompt = Bun.file(systemPromptURL)
+const systemPrompt = Bun.file(systemPromptURL);
 
-export async function createLLMAgent(voiceAgent?: VoiceAgent) {
+export interface UserContext {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+}
+
+export async function createLLMAgent(voiceAgent?: VoiceAgent, userContext?: UserContext) {
   const tools: Record<string, any> = {};
-  
+
   // Initialize Outlook manager (available to all instances)
   const outlookManager = new OutlookManager();
 
@@ -35,23 +43,23 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent) {
           new Date(endDate),
           minDurationMinutes
         );
-        
+
         // Format slots for LLM
         const formatted = slots.map((slot: TimeSlot) => ({
           start: new Date(slot.start).toLocaleString('en-US', { timeZone: 'America/New_York' }),
           end: new Date(slot.end).toLocaleString('en-US', { timeZone: 'America/New_York' })
         }));
-        
-        return { 
-          success: true, 
+
+        return {
+          success: true,
           availableSlots: formatted,
-          count: formatted.length 
+          count: formatted.length
         };
       } catch (error: any) {
         console.error(`[LLM Tool] Error getting availability:`, error);
-        return { 
-          success: false, 
-          error: error.message || "Failed to get calendar availability" 
+        return {
+          success: false,
+          error: error.message || "Failed to get calendar availability"
         };
       }
     }
@@ -76,7 +84,7 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent) {
   //         location,
   //         notes
   //       );
-        
+
   //       return { 
   //         success: true, 
   //         eventId: event.id,
@@ -95,7 +103,7 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent) {
   // });
 
   tools.getCalendarEvents = tool({
-    description: "Get existing events from Samir's calendar for a specific date range. Useful for checking what's already scheduled.",
+    description: "Get existing events from the user's calendar for a specific date range. Useful for checking what's already scheduled.",
     inputSchema: z.object({
       startDate: z.string().describe("Start date/time in ISO format"),
       endDate: z.string().describe("End date/time in ISO format")
@@ -107,7 +115,7 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent) {
           new Date(startDate),
           new Date(endDate)
         );
-        
+
         // Format events for LLM
         const formatted = events.map((event: CalendarEvent) => ({
           subject: event.subject,
@@ -115,21 +123,22 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent) {
           end: new Date(event.end.dateTime).toLocaleString('en-US', { timeZone: 'America/New_York' }),
           location: event.location?.displayName
         }));
-        
-        return { 
-          success: true, 
+
+        return {
+          success: true,
           events: formatted,
-          count: formatted.length 
+          count: formatted.length
         };
       } catch (error: any) {
         console.error(`[LLM Tool] Error getting events:`, error);
-        return { 
-          success: false, 
-          error: error.message || "Failed to get calendar events" 
+        return {
+          success: false,
+          error: error.message || "Failed to get calendar events"
         };
       }
     }
   });
+
   // Only add tools if voiceAgent is provided (after initialization)
   if (voiceAgent) {
     tools.transferToHuman = tool({
@@ -141,15 +150,15 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent) {
         console.log(`[LLM Tool] Transferring to human: ${reason}`);
         try {
           await voiceAgent.transferToHuman(reason);
-          return { 
-            success: true, 
-            message: "Successfully initiated transfer. You will announce the handoff and then disconnect." 
+          return {
+            success: true,
+            message: "Successfully initiated transfer. You will announce the handoff and then disconnect."
           };
         } catch (error: any) {
           console.error(`[LLM Tool] Error transferring to human:`, error);
-          return { 
-            success: false, 
-            error: error.message || "Failed to transfer to human" 
+          return {
+            success: false,
+            error: error.message || "Failed to transfer to human"
           };
         }
       }
@@ -178,12 +187,19 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent) {
     });
   }
 
-  console.log("System prompt:", await systemPrompt.text())
+  let promptText = await systemPrompt.text();
+  console.log("System prompt:", promptText);
+
+  // TODO: When we're getting data from the database, take another look at this.
+  // promptText = promptText
+  //   .replace(/{{USER_NAME}}/g, userContext.first_name)
+  //   .replace(/{{USER_PHONE}}/g, userContext.phone)
+  //   .replace(/{{USER_EMAIL}}/g, userContext.email);
 
   return new Agent({
     model: anthropic("claude-3-5-haiku-latest"),
     system: `
-    ${await systemPrompt.text()}
+    ${promptText}
     Today's date is ${new Date().toISOString()}
     `,
     tools,
