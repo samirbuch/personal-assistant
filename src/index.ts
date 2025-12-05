@@ -8,7 +8,7 @@ import Twilio from "twilio";
 import * as Bun from "bun";
 import { TwilioWebsocket } from "../lib/TwilioWebsocketTypes";
 import { handleStart, handleMedia, handleStop, initiateConference } from "./handlers/TwilioHandler";
-import DatabaseAppointmentListener, { APPOINTMENT_EVENTS } from "./managers/DatabaseAppointmentListener";
+import DatabaseAppointmentListener, { APPOINTMENT_EVENTS, type CreatedAppointment } from "./managers/DatabaseAppointmentListener";
 import type { Tables } from "../lib/supabase.types";
 
 const PORT = process.env.PORT || 40451;
@@ -24,7 +24,7 @@ const twilioClient = Twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKE
 const appointmentListener = new DatabaseAppointmentListener();
 
 // Listen for new appointments and automatically call the business
-appointmentListener.on(APPOINTMENT_EVENTS.CREATED, async (appointment: Tables<"Appointments">) => {
+appointmentListener.on(APPOINTMENT_EVENTS.CREATED, async (appointment: CreatedAppointment) => {
   console.log(`[AppointmentDispatcher] New appointment created:`, appointment);
   
   // Call the business using the existing API endpoint

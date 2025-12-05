@@ -13,6 +13,14 @@ export const APPOINTMENT_EVENTS = {
   DISPATCHED: "dispatched"
 } as const;
 
+export interface CreatedAppointment extends TablesInsert<"Appointments"> {
+  user: Tables<"User">
+}
+
+export interface UpdatedAppointment extends TablesUpdate<"Appointments"> {
+ user: Tables<"User">
+}
+
 export default class DatabaseAppointmentListener extends EventEmitter {
 
   private readonly channel: RealtimeChannel;
