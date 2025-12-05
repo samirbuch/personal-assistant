@@ -57,4 +57,7 @@ async function register() {
   }
 
   console.log("Registered user!", data);
+
+  // grab: data.user.user_id
+  // insert into public.User 
 }

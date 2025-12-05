@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="./supabase.js" defer></script>
+  <script src="./script.js" defer></script>
+  <title>Appointments</title>
+</head>
+
+<body>
+  <nav>
+    <h1>
+      <a href="./index.html">Personal Voice Assistant</a>
+    </h1>
+    <div id="navbar-login" class="displayNone">
+      <form id="login-form">
+        <div class="form-entry">
+          <label for="email">Email</label>
+          <input type="text" name="email" id="email">
+        </div>
+        <div class="form-entry">
+          <label for="password">Password</label>
+          <input type="password" name="password" id="password">
+        </div>
+        <button>login</button>
+      </form>
+    </div>
+    <div id="navbar-userinfo" class="displayNone">
+      <p id="navbar-userinfo-email"></p>
+      <button id="button-sign-out">Sign Out</button>
+    </div>
+  </nav>
+
+  <div class="appointments-container">
+    <h2>Scheduled Appointments</h2>
+    <table id="appointments-table">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Date</th>
+          <th>Location</th>
+          <th>Start Time</th>
+          <th>Phone Number</th>
+        </tr>
+      </thead>
+      <tbody id="appointments-body">
+        <!-- Appointments go HEREEEEEEEE-->
+      </tbody>
+    </table>
+  </div>
+
+</body>
+
+</html>
