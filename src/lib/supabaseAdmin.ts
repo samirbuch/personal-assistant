@@ -1,10 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
+import { type Database } from "../../lib/supabase.types.ts";
 
 if(!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing Supabase URL or Supabase Service Role Key");
 }
 
-const client = createClient(
+const client = createClient<Database>(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
   {

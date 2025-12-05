@@ -8,8 +8,10 @@ import type { TwilioWebsocket } from "../../lib/TwilioWebsocketTypes";
 import { SessionManager } from "../managers/SessionManager";
 import { VoiceAgent } from "../core/VoiceAgent";
 import { createSTT, createTTS, setupSTTHandlers, setupTTSHandlers } from "../managers/DeepgramManager";
-import { createLLMAgent } from "../managers/LLMManager";
+import { createLLMAgent, type UserContext } from "../managers/LLMManager";
 import { ConferenceManager } from "../managers/ConferenceManager";
+import never from "../utils/never";
+import supabaseAdmin from "../lib/supabaseAdmin";
 
 const sessions = new SessionManager();
 
@@ -19,11 +21,41 @@ export async function handleStart(
 ): Promise<void> {
   const { streamSid, start } = message;
   const { callSid, customParameters } = start;
-  
+
   // Extract caller information
   const callerFrom = customParameters?.from as string | undefined;
   const callerTo = customParameters?.to as string | undefined;
-  
+
+  // Extract appointment ID and fetch full data if present
+  let userContext: UserContext | undefined = undefined;
+  const appointmentIdStr = customParameters?.appointmentId as string | undefined;
+  if (appointmentIdStr) {
+    try {
+      const appointmentId = parseInt(appointmentIdStr, 10);
+      console.log(`[Twilio] 📅 Fetching appointment ${appointmentId}...`);
+
+      const { data: appointment, error } = await supabaseAdmin
+        .from("Appointments")
+        .select("*, user_id(*)")
+        .eq("id", appointmentId)
+        .single();
+
+      if (error) {
+        console.error(`[Twilio] Failed to fetch appointment:`, error);
+      } else if (appointment) {
+        console.log(`[Twilio] 📅 Appointment data loaded:`, appointment);
+        userContext = {
+          first_name: appointment.user_id.first_name,
+          last_name: appointment.user_id.last_name,
+          phone: appointment.user_id.phone_number,
+          email: appointment.user_id.email ?? never("Missing email in appointment user information")
+        };
+      }
+    } catch (error) {
+      console.error(`[Twilio] Failed to fetch appointment data:`, error);
+    }
+  }
+
   console.log(`\n[Twilio] ═══ CALL START ═══`);
   console.log(`  Stream: ${streamSid}`);
   console.log(`  Call: ${callSid}`);
@@ -33,7 +65,7 @@ export async function handleStart(
   // Create Deepgram connections
   const stt = createSTT();
   const tts = createTTS();
-  
+
   const voiceAgent = new VoiceAgent({
     ws,
     streamSid,
@@ -43,8 +75,8 @@ export async function handleStart(
     callerPhone: callerFrom
   });
 
-  // Create LLM agent with tools that reference voiceAgent
-  const agent = await createLLMAgent(voiceAgent);
+  // Create LLM agent with tools that reference voiceAgent and user context
+  const agent = await createLLMAgent(voiceAgent, userContext);
   voiceAgent.setAgent(agent);
 
   // Set up handlers
@@ -64,7 +96,7 @@ export async function handleMedia(
   message: TwilioWebsocket.MediaMessage
 ): Promise<void> {
   const agent = sessions.getAgent(message.streamSid);
-  
+
   if (!agent) {
     console.warn(`[Twilio] No agent found for ${message.streamSid}`);
     return;
@@ -93,7 +125,7 @@ export function getSessionManager(): SessionManager {
  * Initiate a native Twilio conference (called by transferToHuman tool)
  */
 export async function initiateConference(
-  callerStreamSid: string, 
+  callerStreamSid: string,
   callSid: string,
   reason: string
 ): Promise<string> {
@@ -102,18 +134,18 @@ export async function initiateConference(
   }
 
   console.log(`[Twilio] 🎙️  Initiating native conference for ${callerStreamSid} - Reason: ${reason}`);
-  
+
   // Create ConferenceManager instance
   const conferenceManager = new ConferenceManager(
     process.env.OWNER_PHONE_NUMBER
   );
-  
+
   // Use the native Twilio conference method
   await conferenceManager.createConferenceAndAddOwner(callSid, callerStreamSid);
-  
+
   console.log(`[Twilio] ✅ Native Twilio conference created`);
   console.log(`[Twilio] 📞 Owner has been called to join`);
-  
+
   return callerStreamSid;
 }
 
