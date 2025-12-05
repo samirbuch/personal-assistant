@@ -46,7 +46,7 @@ export type Database = {
           latitude: string | null
           location: string
           longitude: string | null
-          phone_number: string | null
+          phone_number: string
           range: string | null
           start_time: string
           status: string
@@ -59,7 +59,7 @@ export type Database = {
           latitude?: string | null
           location: string
           longitude?: string | null
-          phone_number?: string | null
+          phone_number: string
           range?: string | null
           start_time: string
           status: string
@@ -72,7 +72,7 @@ export type Database = {
           latitude?: string | null
           location?: string
           longitude?: string | null
-          phone_number?: string | null
+          phone_number?: string
           range?: string | null
           start_time?: string
           status?: string

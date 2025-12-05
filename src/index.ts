@@ -8,6 +8,8 @@ import Twilio from "twilio";
 import * as Bun from "bun";
 import { TwilioWebsocket } from "../lib/TwilioWebsocketTypes";
 import { handleStart, handleMedia, handleStop, initiateConference } from "./handlers/TwilioHandler";
+import DatabaseAppointmentListener, { APPOINTMENT_EVENTS } from "./managers/DatabaseAppointmentListener";
+import type { Tables } from "../lib/supabase.types";
 
 const PORT = process.env.PORT || 40451;
 
@@ -17,6 +19,38 @@ Port: ${PORT}
 `);
 
 const twilioClient = Twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+
+// Initialize database appointment listener
+const appointmentListener = new DatabaseAppointmentListener();
+
+// Listen for new appointments and automatically call the business
+appointmentListener.on(APPOINTMENT_EVENTS.CREATED, async (appointment: Tables<"Appointments">) => {
+  console.log(`[AppointmentDispatcher] New appointment created:`, appointment);
+  
+  // Call the business using the existing API endpoint
+  const publicURL = cleanPublicURL(process.env.PUBLIC_URL);
+  if (!publicURL) {
+    console.error(`[AppointmentDispatcher] PUBLIC_URL not configured, cannot initiate call`);
+    return;
+  }
+  
+  const isNgrok = publicURL.includes(".ngrok-free.app");
+  const url = `http://${publicURL}${isNgrok ? "" : `:${PORT}`}/api/calls/${encodeURIComponent(appointment.phone_number)}`;
+  
+  try {
+    console.log(`[AppointmentDispatcher] 📞 Calling business at ${appointment.phone_number}...`);
+    const response = await fetch(url, { method: "POST" });
+    
+    if (response.ok) {
+      const callInfo = await response.json();
+      console.log(`[AppointmentDispatcher] Call initiated successfully:`, callInfo);
+    } else {
+      console.error(`[AppointmentDispatcher] Failed to initiate call: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error(`[AppointmentDispatcher] Error calling business:`, error);
+  }
+});
 
 // Utility to clean public URL
 function cleanPublicURL(url: string | undefined): string | null {
@@ -273,4 +307,18 @@ Bun.serve({
 });
 
 console.log(`✅ Server running on port ${PORT}`);
-console.log(`📞 Ready to handle voice calls\n`);
+console.log(`📞 Ready to handle voice calls`);
+console.log(`📅 Database appointment listener active\n`);
+
+// Cleanup on exit
+process.on("SIGINT", () => {
+  console.log("\n[Server] Shutting down...");
+  appointmentListener.cleanup();
+  process.exit(0);
+});
+
+process.on("SIGTERM", () => {
+  console.log("\n[Server] Shutting down...");
+  appointmentListener.cleanup();
+  process.exit(0);
+});
