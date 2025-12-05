@@ -38,11 +38,24 @@
     <form id="register-form">
         <div class="form-entry">
             <label for="Email">Email</label>
-            <input type="text" name="email" id="email">
+            <input type="text" name="email" id="email" required>
         </div>
         <div class="form-entry">
             <label for="password">Password</label>
-            <input type="password" name="password">
+            <input type="password" name="password" required>
+        </div>
+
+        <div class="form-entry">
+            <label for="first-name">First Name</label>
+            <input type="text" name="first-name" id="first-name" required>
+        </div>
+        <div class="form-entry">
+            <label for="last-name">Last Name</label>
+            <input type="text" name="last-name" id="last-name" required>
+        </div>
+        <div class="form-entry">
+            <label for="phone-number">Phone Number</label>
+            <input type="text" name="phone-number" id="phone-number" required>
         </div>
 
         <button type="submit">Create Account</button>
