@@ -79,4 +79,7 @@ async function register() {
     alert("User created, error inserting");
     return;
   }
+
+  // Go home.
+  window.location.href = "/";
 }
