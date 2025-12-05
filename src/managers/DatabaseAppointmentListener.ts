@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import supabaseAdmin from "../lib/supabaseAdmin";
 import type { RealtimeChannel, RealtimePostgresChangesPayload, RealtimePostgresInsertPayload, RealtimePostgresUpdatePayload } from "@supabase/supabase-js";
 import type { Tables, TablesInsert, TablesUpdate } from "../../lib/supabase.types";
+import never from "../utils/never";
 
 // really fucking stupid that @types/node doesn't export this lol
 type EventEmitterOptions = ConstructorParameters<typeof EventEmitter>[0];
@@ -31,7 +32,7 @@ export default class DatabaseAppointmentListener extends EventEmitter {
         (payload: RealtimePostgresChangesPayload<Tables<"Appointments">>) => {
           console.log("APPOINTMENT PAYLOAD", payload);
 
-          switch(payload.eventType) {
+          switch (payload.eventType) {
             case "INSERT": {
               this.handleInsert(payload);
               break;
@@ -52,12 +53,50 @@ export default class DatabaseAppointmentListener extends EventEmitter {
     this.channel = channel;
   }
 
-  private handleInsert(payload: RealtimePostgresInsertPayload<TablesInsert<"Appointments">>) {
-    return this.emit(APPOINTMENT_EVENTS.CREATED, payload.new);
+  private async handleInsert(payload: RealtimePostgresInsertPayload<TablesInsert<"Appointments">>) {
+    const { data, error } = await supabaseAdmin.from("User")
+      .select("*")
+      .eq("user_id", payload.new.user_id)
+      .single();
+
+    if (!data || error) {
+      if (error)
+        throw error;
+
+      throw new Error(`Could not find user ${payload.new.user_id}`);
+    }
+
+    const p = {
+      ...payload.new,
+      user: data
+    }
+
+    return this.emit(APPOINTMENT_EVENTS.CREATED, p);
   }
 
-  private handleUpdate(payload: RealtimePostgresUpdatePayload<TablesUpdate<"Appointments">>) {
-    return this.emit(APPOINTMENT_EVENTS.UPDATED, payload.old, payload.new);
+  private async handleUpdate(payload: RealtimePostgresUpdatePayload<TablesUpdate<"Appointments">>) {
+    const { data, error } = await supabaseAdmin.from("User")
+      .select("*")
+      .eq("user_id", payload.new.user_id ?? never("User ID should exist in appointment payload"))
+      .single();
+
+    if (!data || error) {
+      if (error)
+        throw error;
+
+      throw new Error(`Could not find user ${payload.new.user_id}`);
+    }
+
+    const pOld = {
+      ...payload.old,
+      user: data
+    }
+    const pNew = {
+      ...payload.new,
+      user: data
+    }
+
+    return this.emit(APPOINTMENT_EVENTS.UPDATED, pOld, pNew);
   }
 
   public cleanup(): void {
