@@ -27,6 +27,12 @@ const appointmentListener = new DatabaseAppointmentListener();
 appointmentListener.on(APPOINTMENT_EVENTS.CREATED, async (appointment: CreatedAppointment) => {
   console.log(`[AppointmentDispatcher] New appointment created:`, appointment);
   
+  // Normalize phone number to E.164 format: +<countrycode><phonenumber>
+  let phoneNumber = appointment.phone_number.replace(/\s+/g, ""); // Remove all spaces
+  if (!phoneNumber.startsWith("+")) {
+    phoneNumber = `+1${phoneNumber}`; // Assume US/Canada if no country code
+  }
+  
   // Call the business using the existing API endpoint
   const publicURL = cleanPublicURL(process.env.PUBLIC_URL);
   if (!publicURL) {
@@ -35,10 +41,10 @@ appointmentListener.on(APPOINTMENT_EVENTS.CREATED, async (appointment: CreatedAp
   }
   
   const isNgrok = publicURL.includes(".ngrok-free.app");
-  const url = `http://${publicURL}${isNgrok ? "" : `:${PORT}`}/api/calls/${encodeURIComponent(appointment.phone_number)}`;
+  const url = `http://${publicURL}${isNgrok ? "" : `:${PORT}`}/api/calls/${phoneNumber}`;
   
   try {
-    console.log(`[AppointmentDispatcher] 📞 Calling business at ${appointment.phone_number}...`);
+    console.log(`[AppointmentDispatcher] 📞 Calling business at ${phoneNumber}...`);
     const response = await fetch(url, { method: "POST" });
     
     if (response.ok) {
