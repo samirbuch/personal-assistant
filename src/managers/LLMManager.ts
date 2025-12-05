@@ -188,14 +188,17 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent, userContext?: User
   }
 
   let promptText = await systemPrompt.text();
+  
+  if (userContext) {
+    promptText = promptText
+    .replace(/{{USER_NAME}}/g, userContext.first_name)
+    .replace(/{{USER_PHONE}}/g, userContext.phone)
+    .replace(/{{USER_EMAIL}}/g, userContext.email);
+  }
+  // TODO: Handle what happens when there's no user context
+  
   console.log("System prompt:", promptText);
-
-  // TODO: When we're getting data from the database, take another look at this.
-  // promptText = promptText
-  //   .replace(/{{USER_NAME}}/g, userContext.first_name)
-  //   .replace(/{{USER_PHONE}}/g, userContext.phone)
-  //   .replace(/{{USER_EMAIL}}/g, userContext.email);
-
+  
   return new Agent({
     model: anthropic("claude-3-5-haiku-latest"),
     system: `

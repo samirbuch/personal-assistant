@@ -9,7 +9,6 @@ import * as Bun from "bun";
 import { TwilioWebsocket } from "../lib/TwilioWebsocketTypes";
 import { handleStart, handleMedia, handleStop, initiateConference } from "./handlers/TwilioHandler";
 import DatabaseAppointmentListener, { APPOINTMENT_EVENTS, type CreatedAppointment } from "./managers/DatabaseAppointmentListener";
-import type { Tables } from "../lib/supabase.types";
 
 const PORT = process.env.PORT || 40451;
 
@@ -26,35 +25,39 @@ const appointmentListener = new DatabaseAppointmentListener();
 // Listen for new appointments and automatically call the business
 appointmentListener.on(APPOINTMENT_EVENTS.CREATED, async (appointment: CreatedAppointment) => {
   console.log(`[AppointmentDispatcher] New appointment created:`, appointment);
-  
+
   // Normalize phone number to E.164 format: +<countrycode><phonenumber>
   let phoneNumber = appointment.phone_number.replace(/\s+/g, ""); // Remove all spaces
   if (!phoneNumber.startsWith("+")) {
     phoneNumber = `+1${phoneNumber}`; // Assume US/Canada if no country code
   }
-  
+
   // Call the business using the existing API endpoint
   const publicURL = cleanPublicURL(process.env.PUBLIC_URL);
   if (!publicURL) {
     console.error(`[AppointmentDispatcher] PUBLIC_URL not configured, cannot initiate call`);
     return;
   }
-  
+
   const isNgrok = publicURL.includes(".ngrok-free.app");
   const url = `http://${publicURL}${isNgrok ? "" : `:${PORT}`}/api/calls/${phoneNumber}`;
-  
+
   try {
     console.log(`[AppointmentDispatcher] 📞 Calling business at ${phoneNumber}...`);
-    const response = await fetch(url, { method: "POST" });
-    
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appointmentId: appointment.id })
+    });
+
     if (response.ok) {
       const callInfo = await response.json();
-      console.log(`[AppointmentDispatcher] Call initiated successfully:`, callInfo);
+      console.log(`[AppointmentDispatcher] ✅ Call initiated successfully:`, callInfo);
     } else {
-      console.error(`[AppointmentDispatcher] Failed to initiate call: ${response.statusText}`);
+      console.error(`[AppointmentDispatcher] ❌ Failed to initiate call: ${response.statusText}`);
     }
   } catch (error) {
-    console.error(`[AppointmentDispatcher] Error calling business:`, error);
+    console.error(`[AppointmentDispatcher] ❌ Error calling business:`, error);
   }
 });
 
@@ -84,17 +87,35 @@ Bun.serve({
         return new Response("Missing or invalid PUBLIC_URL", { status: 500 });
       }
 
+      // Parse optional appointment ID from request body
+      let appointmentId: number | null = null;
+      try {
+        const body = await req.text();
+        if (body) {
+          const data = JSON.parse(body);
+          appointmentId = data.appointmentId;
+        }
+      } catch {
+        // No body or invalid JSON - that's OK
+      }
+
       const isNgrok = publicURL.includes(".ngrok-free.app");
       const callbackURL = `http://${publicURL}${isNgrok ? "" : `:${PORT}`}/api/twilio-gateway`;
+      const callbackURLWithContext = appointmentId
+        ? `${callbackURL}?appointmentId=${appointmentId}`
+        : callbackURL;
 
       try {
         const call = await twilioClient.calls.create({
           from,
           to: req.params.number,
-          url: callbackURL
+          url: callbackURLWithContext
         });
 
         console.log(`[API] Initiated call to ${req.params.number}: ${call.sid}`);
+        if (appointmentId) {
+          console.log(`[API] Appointment ID: ${appointmentId}`);
+        }
         return new Response(JSON.stringify(call.toJSON()), {
           headers: { "Content-Type": "application/json" }
         });
@@ -215,11 +236,15 @@ Bun.serve({
       const callSid = url.searchParams.get('CallSid') || '';
       const fromCity = url.searchParams.get('FromCity') || '';
       const fromState = url.searchParams.get('FromState') || '';
+      const appointmentId = url.searchParams.get('appointmentId') || '';
 
       console.log(`[Twilio] 📞 Incoming call:`);
       console.log(`  From: ${from} (${fromCity}, ${fromState})`);
       console.log(`  To: ${to}`);
       console.log(`  CallSid: ${callSid}`);
+      if (appointmentId) {
+        console.log(`  📅 Appointment ID: ${appointmentId}`);
+      }
 
       const isNgrok = publicURL.includes(".ngrok-free.app");
       const wsURL = `wss://${publicURL}${isNgrok ? "" : `:${PORT}`}/twilio-ws`;
@@ -241,6 +266,9 @@ Bun.serve({
       stream.parameter({ name: 'to', value: to });
       stream.parameter({ name: 'fromCity', value: fromCity });
       stream.parameter({ name: 'fromState', value: fromState });
+      if (appointmentId) {
+        stream.parameter({ name: 'appointmentId', value: appointmentId });
+      }
 
       return new Response(response.toString(), {
         headers: { "Content-Type": "text/xml" }
