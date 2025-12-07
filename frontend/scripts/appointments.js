@@ -1,6 +1,88 @@
 import { supabase } from "./supabase.js";
 
 /**
+ * @typedef {Object} Status
+ * @property {string} status - Status value from database
+ * @property {string} label - Human-readable label
+ * @property {string} hoverText - Tooltip text for status badge
+ * @property {string} backgroundColor - Badge background color
+ * @property {string} textColor - Badge text color
+ */
+// i love jsdoc <3
+// i hate regular js <3
+
+/**
+ * Appointment status definitions
+ * @type {Status[]}
+ */
+const statuses = [
+  {
+    status: "PENDING",
+    label: "Pending",
+    hoverText: "Call scheduled",
+    backgroundColor: "#fff3cd",
+    textColor: "#856404"
+  },
+  {
+    status: "IN_PROGRESS",
+    label: "In Progress",
+    hoverText: "Call is currently in progress",
+    backgroundColor: "#d1ecf1",
+    textColor: "#0c5460"
+  },
+  {
+    status: "SUCCESS",
+    label: "Success",
+    hoverText: "Appointment successfully scheduled",
+    backgroundColor: "#d4edda",
+    textColor: "#155724"
+  },
+  {
+    status: "FAILED:TECH ERROR",
+    label: "Failed: Technical Error",
+    hoverText: "Call failed due to technical issues (bad connection, system error)",
+    backgroundColor: "#f8d7da",
+    textColor: "#721c24"
+  },
+  {
+    status: "FAILED:BUSINESS CLOSED",
+    label: "Failed: Business Closed",
+    hoverText: "Business is closed or not accepting appointments",
+    backgroundColor: "#f8d7da",
+    textColor: "#721c24"
+  },
+  {
+    status: "FAILED:HUMAN ERROR",
+    label: "Failed: Human Error",
+    hoverText: "Representative couldn't or wouldn't help",
+    backgroundColor: "#f8d7da",
+    textColor: "#721c24"
+  },
+  {
+    status: "FAILED:NO AVAILABLE SLOTS",
+    label: "Failed: No Slots",
+    hoverText: "No available appointment times",
+    backgroundColor: "#f8d7da",
+    textColor: "#721c24"
+  }
+];
+
+/**
+ * Get status configuration by status value
+ * @param {string} statusValue - Status value from database
+ * @returns {Status} Status configuration object
+ */
+function getStatus(statusValue) {
+  return statuses.find(s => s.status === statusValue) || {
+    status: statusValue || "UNKNOWN",
+    label: statusValue || "Unknown",
+    hoverText: "Status unknown",
+    backgroundColor: "#e2e3e5",
+    textColor: "#383d41"
+  };
+}
+
+/**
  * Formats a date string to a readable format (e.g., "December 7, 2024")
  * @param {string} dateString - ISO date string
  * @returns {string} Formatted date
@@ -26,6 +108,24 @@ function formatTime(timeString) {
     minute: "2-digit",
     hour12: true,
   });
+}
+
+/**
+ * Formats and styles the status badge
+ * @param {string} statusValue - Status string from database
+ * @returns {HTMLElement} Styled status badge element
+ */
+function createStatusBadge(statusValue) {
+  const config = getStatus(statusValue);
+  
+  const badge = document.createElement("span");
+  badge.className = "status-badge";
+  badge.textContent = config.label;
+  badge.title = config.hoverText;
+  badge.style.backgroundColor = config.backgroundColor;
+  badge.style.color = config.textColor;
+  
+  return badge;
 }
 
 /**
@@ -57,6 +157,10 @@ function createAppointmentRow(appointment) {
   phoneCell.textContent = appointment.phone_number;
   row.appendChild(phoneCell);
 
+  const statusCell = document.createElement("td");
+  statusCell.appendChild(createStatusBadge(appointment.status));
+  row.appendChild(statusCell);
+
   return row;
 }
 
@@ -67,7 +171,7 @@ async function loadAppointments() {
   const appointmentsBody = document.getElementById("appointments-body");
 
   // Show loading state
-  appointmentsBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loading appointments...</td></tr>';
+  appointmentsBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Loading appointments...</td></tr>';
 
   try {
     // Get the current user
@@ -76,7 +180,7 @@ async function loadAppointments() {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      appointmentsBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Please log in to view appointments.</td></tr>';
+      appointmentsBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Please log in to view appointments.</td></tr>';
       return;
     }
 
@@ -89,7 +193,7 @@ async function loadAppointments() {
 
     if (error) {
       console.error("Error fetching appointments:", error);
-      appointmentsBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Error loading appointments. Please try again.</td></tr>';
+      appointmentsBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Error loading appointments. Please try again.</td></tr>';
       return;
     }
 
@@ -98,7 +202,7 @@ async function loadAppointments() {
 
     // If no appointments found
     if (!appointments || appointments.length === 0) {
-      appointmentsBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No appointments scheduled.</td></tr>';
+      appointmentsBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No appointments scheduled.</td></tr>';
       return;
     }
 
@@ -109,7 +213,7 @@ async function loadAppointments() {
     });
   } catch (err) {
     console.error("Unexpected error:", err);
-    appointmentsBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">An unexpected error occurred.</td></tr>';
+    appointmentsBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">An unexpected error occurred.</td></tr>';
   }
 }
 

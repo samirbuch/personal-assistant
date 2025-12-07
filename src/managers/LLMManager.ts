@@ -180,7 +180,7 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent, userContext?: User
 
     const appointmentStatuses = z.enum([
           "PENDING",
-          "IN PROGRESS",
+          "IN_PROGRESS",
           "FAILED:TECH ERROR",
           "FAILED:BUSINESS CLOSED",
           "FAILED:HUMAN ERROR",
