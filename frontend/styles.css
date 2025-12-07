@@ -216,6 +216,11 @@ button:active {
   border: 2px solid transparent;
   position: relative;
   overflow: hidden;
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  cursor: pointer;
 }
 
 .welcome-card::before {
@@ -229,16 +234,14 @@ button:active {
 }
 
 .welcome-card:hover {
-  /* transform: translateY(-8px) scale(1.02); */
-  box-shadow: var(--shadow-xl);
+  /* transform: translateY(-4px); */
+  box-shadow: 0 25px 35px -5px rgba(0, 0, 0, 0.15), 0 15px 15px -5px rgba(0, 0, 0, 0.08);
   border-color: var(--primary-color);
 }
 
-.welcome-card a {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  display: block;
+.welcome-card:active {
+  /* transform: translateY(-2px); */
+  box-shadow: var(--shadow-lg);
 }
 
 .register::before {
@@ -359,6 +362,7 @@ button:active {
   .welcome-card {
     padding: 2rem 2.5rem;
     min-width: 100%;
+    font-size: 1.25rem;
   }
 
   .appointments-container {
@@ -387,7 +391,7 @@ button:active {
 }
 
 @media (max-width: 480px) {
-  .welcome-card a {
+  .welcome-card {
     font-size: 1.125rem;
   }
 

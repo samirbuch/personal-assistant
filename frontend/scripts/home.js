@@ -1,7 +1,7 @@
 import { supabase } from "./supabase.js";
 
 (async () => {
-  const registerCard = document.querySelector("div.register.welcome-card");
+  const registerCard = document.querySelector("a.register.welcome-card");
   if (!registerCard) return;
 
   const {
