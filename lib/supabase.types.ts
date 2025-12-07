@@ -89,24 +89,6 @@ export type Database = {
           },
         ]
       }
-      test: {
-        Row: {
-          created_at: string
-          id: number
-          test_column: string
-        }
-        Insert: {
-          created_at?: string
-          id?: number
-          test_column: string
-        }
-        Update: {
-          created_at?: string
-          id?: number
-          test_column?: string
-        }
-        Relationships: []
-      }
       "to-be-scheduled": {
         Row: {
           appointment_type: string | null
@@ -163,8 +145,8 @@ export type Database = {
           first_name: string
           id: number
           last_name: string
-          latitude: number
-          longitude: number
+          latitude: number | null
+          longitude: number | null
           phone_number: string
           user_id: string
         }
@@ -173,8 +155,8 @@ export type Database = {
           first_name: string
           id?: number
           last_name: string
-          latitude: number
-          longitude: number
+          latitude?: number | null
+          longitude?: number | null
           phone_number: string
           user_id: string
         }
@@ -183,8 +165,8 @@ export type Database = {
           first_name?: string
           id?: number
           last_name?: string
-          latitude?: number
-          longitude?: number
+          latitude?: number | null
+          longitude?: number | null
           phone_number?: string
           user_id?: string
         }
