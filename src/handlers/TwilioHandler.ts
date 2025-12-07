@@ -72,7 +72,8 @@ export async function handleStart(
     callSid,
     stt,
     tts,
-    callerPhone: callerFrom
+    callerPhone: callerFrom,
+    appointmentId: appointmentIdStr ? parseInt(appointmentIdStr, 10) : undefined
   });
 
   // Create LLM agent with tools that reference voiceAgent and user context
@@ -106,11 +107,11 @@ export async function handleMedia(
   await agent.handleIncomingAudio(message.media.payload);
 }
 
-export function handleStop(
+export async function handleStop(
   message: TwilioWebsocket.StopMessage
-): void {
+): Promise<void> {
   console.log(`\n[Twilio] ═══ CALL END ═══ ${message.streamSid}`);
-  sessions.delete(message.streamSid);
+  await sessions.delete(message.streamSid);
 }
 
 export function getSessionCount(): number {

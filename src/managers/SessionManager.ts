@@ -34,10 +34,10 @@ export class SessionManager {
   /**
    * Delete an agent
    */
-  public delete(streamSid: string): void {
+  public async delete(streamSid: string): Promise<void> {
     const agent = this.agents.get(streamSid);
     if (agent) {
-      agent.cleanup();
+      await agent.cleanup();
       this.agents.delete(streamSid);
       console.log(`[SessionManager] Deleted agent: ${streamSid}`);
     }

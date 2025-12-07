@@ -353,7 +353,7 @@ Bun.serve({
             break;
 
           case "stop":
-            handleStop(msg);
+            await handleStop(msg);
             break;
 
           case "connected":

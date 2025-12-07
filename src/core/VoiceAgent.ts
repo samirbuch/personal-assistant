@@ -13,6 +13,8 @@ import { AudioController } from "./AudioController";
 import { ConversationManager, Speaker } from "./ConversationManager";
 import { InterruptionDetector } from "./InterruptionDetector";
 import type { TwilioWebsocket } from "../../lib/TwilioWebsocketTypes";
+import supabaseAdmin from "../lib/supabaseAdmin";
+import type { TablesUpdate } from "../../lib/supabase.types";
 
 export interface VoiceAgentConfig {
   ws: Bun.ServerWebSocket;
@@ -22,12 +24,16 @@ export interface VoiceAgentConfig {
   tts: SpeakLiveClient;
   agent?: Agent<{}, never, never>; // Optional - can be set later
   callerPhone?: string; // Caller's phone number for verification
+  appointmentId?: number; // Appointment ID if this call is for an appointment
 }
 
 export class VoiceAgent {
   private streamSid: string;
   private callSid: string;
   private callerPhone?: string;
+  private appointmentId?: number;
+  private appointmentStatus?: string;
+  private appointmentNotes?: string;
   private stateMachine: VoiceAgentStateMachine;
   private audio: AudioController;
   private conversation: ConversationManager;
@@ -42,6 +48,7 @@ export class VoiceAgent {
     this.streamSid = config.streamSid;
     this.callSid = config.callSid;
     this.callerPhone = config.callerPhone;
+    this.appointmentId = config.appointmentId;
     this.stt = config.stt;
     this.tts = config.tts;
     if (config.agent) {
@@ -355,13 +362,33 @@ export class VoiceAgent {
     });
   }
 
-
-
   /**
    * Clean up resources
    */
-  public cleanup(): void {
+  public async cleanup(): Promise<void> {
     console.log(`[VoiceAgent] Cleaning up...`);
+
+    // Save appointment status before cleanup if set
+    if (this.appointmentId && this.appointmentStatus) {
+      try {
+        console.log(`[VoiceAgent] Saving appointment ${this.appointmentId} status: ${this.appointmentStatus}`);
+        
+        const updateData: TablesUpdate<"Appointments"> = { status: this.appointmentStatus };
+
+        const { error } = await supabaseAdmin
+          .from("Appointments")
+          .update(updateData)
+          .eq("id", this.appointmentId);
+
+        if (error) {
+          console.error(`[VoiceAgent] Error saving appointment status:`, error);
+        } else {
+          console.log(`[VoiceAgent] Appointment status saved successfully`);
+        }
+      } catch (error: any) {
+        console.error(`[VoiceAgent] Error saving appointment status:`, error);
+      }
+    }
 
     if (this.abortController) {
       this.abortController.abort("cleanup");
@@ -406,6 +433,22 @@ export class VoiceAgent {
    */
   public getCallerPhone(): string | undefined {
     return this.callerPhone;
+  }
+
+  /**
+   * Get appointment ID
+   */
+  public getAppointmentId(): number | undefined {
+    return this.appointmentId;
+  }
+
+  /**
+   * Set appointment status to be saved on cleanup
+   */
+  public setAppointmentOutcome(status: string, notes?: string): void {
+    this.appointmentStatus = status;
+    this.appointmentNotes = notes;
+    console.log(`[VoiceAgent] Appointment outcome set: ${status}${notes ? ` - ${notes}` : ''}`);
   }
 
 

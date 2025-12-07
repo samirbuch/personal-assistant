@@ -10,6 +10,8 @@ import { z } from "zod";
 import type { VoiceAgent } from "../core/VoiceAgent";
 import { OutlookManager, type TimeSlot, type CalendarEvent } from "./OutlookManager";
 import { getProfile } from "../utils/misc";
+import supabaseAdmin from "../lib/supabaseAdmin";
+import type { TablesUpdate } from "../../lib/supabase.types";
 
 const systemPromptURL = new URL("../assets/system-prompt.txt", import.meta.url);
 const systemPrompt = Bun.file(systemPromptURL);
@@ -176,29 +178,114 @@ export async function createLLMAgent(voiceAgent?: VoiceAgent, userContext?: User
       }
     });
 
+    const appointmentStatuses = z.enum([
+          "PENDING",
+          "IN PROGRESS",
+          "FAILED:TECH ERROR",
+          "FAILED:BUSINESS CLOSED",
+          "FAILED:HUMAN ERROR",
+          "FAILED:NO AVAILABLE SLOTS",
+          "SUCCESS"
+        ]).describe("The outcome status. PENDING: Initial state. IN PROGRESS: Call is ongoing. FAILED:TECH ERROR: Technical issues (e.g., bad connection, voicemail system error). FAILED:BUSINESS CLOSED: Business is closed or not taking appointments. FAILED:HUMAN ERROR: Human representative refused or couldn't help. FAILED:NO AVAILABLE SLOTS: No available appointment times. SUCCESS: Appointment successfully scheduled.")
+
     tools.hangUpCall = tool({
-      description: "End the current phone call. Use this after completing the task, leaving a voicemail, or when asked to hang up.",
-      inputSchema: z.object({}),
-      execute: async () => {
-        console.log(`[LLM Tool] Hanging up call`);
+      description: "End the current phone call. REQUIRED: You must provide the call outcome status and optional notes. Use this after completing the task, leaving a voicemail, or when asked to hang up.",
+      inputSchema: z.object({
+        status: appointmentStatuses,
+        notes: z.string().optional().describe("Optional notes about the call outcome, appointment details, or any important information")
+      }),
+      execute: async ({ status, notes }) => {
+        console.log(`[LLM Tool] Hanging up call with status: ${status}`);
+        
+        // Set the appointment outcome to be saved during cleanup
+        voiceAgent.setAppointmentOutcome(status, notes);
+        
+        // Then hang up
         await voiceAgent.hangUp();
-        return { success: true, message: "Call ended" };
+        return { success: true, message: "Call ended", status };
+      }
+    });
+
+    tools.updateAppointmentStatus = tool({
+      description: "Update the status of the current appointment in the database immediately during the call. Use this to update progress (e.g., set to 'IN PROGRESS' when call starts) or if you need to update status without hanging up. Note: hangUpCall will also save status automatically on cleanup.",
+      inputSchema: z.object({
+        status: appointmentStatuses,
+        notes: z.string().optional().describe("Optional notes about the call outcome, appointment details, or any important information")
+      }),
+      execute: async ({ status, notes }) => {
+        const appointmentId = voiceAgent.getAppointmentId();
+
+        if (!appointmentId) {
+          console.warn(`[LLM Tool] No appointment ID associated with this call`);
+          return {
+            success: false,
+            error: "No appointment ID associated with this call"
+          };
+        }
+
+        console.log(`[LLM Tool] Updating appointment ${appointmentId} status to: ${status}`);
+        if (notes) {
+          console.log(`[LLM Tool] Notes: ${notes}`);
+        }
+
+        try {
+          const updateData: TablesUpdate<"Appointments"> = { status };
+
+          // // Store notes in the range field if provided TODO: store in a different column
+          // if (notes) {
+          //   updateData.range = notes;
+          // }
+
+          const { data, error } = await supabaseAdmin
+            .from("Appointments")
+            .update(updateData)
+            .eq("id", appointmentId)
+            .select()
+            .single();
+
+          if (error) {
+            console.error(`[LLM Tool] Error updating appointment:`, error);
+            return {
+              success: false,
+              error: error.message || "Failed to update appointment status"
+            };
+          }
+
+          console.log(`[LLM Tool] ✅ Appointment ${appointmentId} updated successfully`);
+          
+          // Also set as the final outcome in case call ends unexpectedly
+          voiceAgent.setAppointmentOutcome(status, notes);
+          
+          return {
+            success: true,
+            appointmentId,
+            status,
+            notes,
+            data
+          };
+        } catch (error: any) {
+          console.error(`[LLM Tool] Error updating appointment:`, error);
+          return {
+            success: false,
+            error: error.message || "Failed to update appointment status"
+          };
+        }
       }
     });
   }
 
   let promptText = await systemPrompt.text();
-  
+
   if (userContext) {
     promptText = promptText
-    .replace(/{{USER_NAME}}/g, userContext.first_name)
-    .replace(/{{USER_PHONE}}/g, userContext.phone)
-    .replace(/{{USER_EMAIL}}/g, userContext.email);
+      .replace(/{{USER_NAME}}/g, userContext.first_name)
+      .replace(/{{USER_PHONE}}/g, userContext.phone)
+      .replace(/{{USER_EMAIL}}/g, userContext.email);
   }
   // TODO: Handle what happens when there's no user context
-  
+
   console.log("System prompt:", promptText);
-  
+
   return new Agent({
     model: anthropic("claude-3-5-haiku-latest"),
     system: `
