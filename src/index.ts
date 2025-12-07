@@ -7,8 +7,9 @@
 import Twilio from "twilio";
 import * as Bun from "bun";
 import { TwilioWebsocket } from "../lib/TwilioWebsocketTypes";
-import { handleStart, handleMedia, handleStop, initiateConference } from "./handlers/TwilioHandler";
+import { handleStart, handleMedia, handleStop, initiateConference, getSessionManager } from "./handlers/TwilioHandler";
 import DatabaseAppointmentListener, { APPOINTMENT_EVENTS, type CreatedAppointment } from "./managers/DatabaseAppointmentListener";
+import { hangUpCall } from "./utils/CallInitiator";
 
 const PORT = process.env.PORT || 40451;
 
@@ -136,16 +137,49 @@ Bun.serve({
         return new Response("Missing streamSid", { status: 400 });
       }
 
-      // For now, just return success - the WebSocket closing will handle cleanup
       console.log(`[API] Hangup requested for stream ${streamSid}`);
 
-      return new Response(JSON.stringify({
-        success: true,
-        streamSid,
-        message: "Hangup initiated"
-      }), {
-        headers: { "Content-Type": "application/json" }
-      });
+      try {
+        // Get the session manager and look up the agent
+        const sessionManager = getSessionManager();
+        const agent = sessionManager.getAgent(streamSid);
+
+        if (!agent) {
+          console.warn(`[API] No agent found for stream ${streamSid}`);
+          return new Response(JSON.stringify({
+            success: false,
+            error: "No active session found"
+          }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        // Get the callSid and hang up the Twilio call
+        const callSid = agent.getCallSid();
+        await hangUpCall(callSid);
+
+        console.log(`[API] Successfully hung up call ${callSid}`);
+
+        return new Response(JSON.stringify({
+          success: true,
+          streamSid,
+          callSid,
+          message: "Call terminated"
+        }), {
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (error: unknown) {
+        console.error(`[API] Error hanging up call:`, error);
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        return new Response(JSON.stringify({
+          success: false,
+          error: errorMessage
+        }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
     },
 
     // API: Initiate conference (dual-call mode)
