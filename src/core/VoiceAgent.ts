@@ -275,7 +275,9 @@ export class VoiceAgent {
         // Add the FULL response (including tool calls/results) to conversation
         // This ensures tool calls are properly tracked in conversation history
         const response = await result.response;
-        this.conversation.addAssistantMessage(response.messages[0] as AssistantModelMessage);
+        for(const message of response.messages) {
+          this.conversation.addAssistantMessage(message as AssistantModelMessage);
+        }
 
         // Don't transition here - let handleTTSFlushed() handle the transition
         // This keeps us in SPEAKING state so interruptions can still be detected
