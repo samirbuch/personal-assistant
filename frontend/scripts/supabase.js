@@ -1,5 +1,6 @@
 // Import Supabase via CDN (if using type="module" in HTML)
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.86.0/+esm";
+// v2.86.0 is the last working version in the browser
 
 // Replace these with your Supabase project info
 
@@ -9,6 +10,7 @@ const supabaseKey =
 const supabaseUrl = "https://zyxlbcypsbyrounrypsy.supabase.co";
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
+console.log("Supabase client:", supabase);
 
 export async function getProfile(userID) {
   const { data, error } = await supabase
