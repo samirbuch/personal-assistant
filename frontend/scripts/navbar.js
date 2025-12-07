@@ -44,6 +44,7 @@ export async function showUserData() {
   const p = document.querySelector("#navbar-userinfo-email");
   p.innerText = email;
   userInfoDiv.classList.remove("displayNone");
+  loginFormDiv.classList.add("displayNone");
 }
 
 loginForm.addEventListener("submit", (e) => {
