@@ -33,6 +33,45 @@ Occasionally the LLM will make calls to external **tools**. Luckily, this is fai
 ```mermaid
 sequenceDiagram
     actor User
+    participant Website
+    participant Database
+    participant Server
+    actor Barbershop
+
+    User ->> Website: "Schedule a haircut please"
+    activate Website
+    Website ->> Database: "Queue this appointment please"
+    Database -->> Website: "Done"
+    Website -->> User: "Got it, it's queued up."
+    deactivate Website
+
+    Server -) Database: "Are there any appointments to make?"
+    activate Database
+    Database -->> Server: "Yes! Please make this appointment now"
+    deactivate Database
+
+    loop Scheduling conversation
+    Server ->> Barbershop: "[LLM]: Schedule appointment"
+    Barbershop -->> Server: "Cool, scheduled."
+    end
+
+    Server ->> Database: Update status
+
+    User ->> Website: Check appointments
+    activate Website
+    Website ->> Database: Check appointments
+    Database -->> Website: Upcoming appointments
+    Website -->> User: Upcoming appointments
+    deactivate Website
+
+    User ->> Barbershop: Get haircut
+```
+
+<details>
+<summary>Technical seq diagram of server machinations</summary>
+```mermaid
+sequenceDiagram
+    actor User
     participant Client
     participant S as Server/Daemon
     actor Twilio
@@ -58,25 +97,25 @@ sequenceDiagram
     activate Barbershop
 
     loop Conversation and negotiation
-        Barbershop -->> Twilio: "Hello?"
-        Twilio -->> S: audio/x-mulaw 8khz stream
+        Barbershop --) Twilio: "Hello?"
+        Twilio --) S: audio/x-mulaw 8khz stream
         S -) Deepgram: audio/x-mulaw 8khz
         activate Deepgram
         Deepgram --) S: Speech-To-Text (STT) "Hello?"
         deactivate Deepgram
 
-        S ->> LLM: Conversation
-        LLM -->> S: Response "Hi! I'd like to schedule a haircut for Samir please"
+        S -) LLM: Conversation
+        LLM --) S: Response "Hi! I'd like to schedule a haircut for Samir please"
         S -) Deepgram: Text-To-Speech (TTS) Response
         activate Deepgram
         Deepgram --) S: audio/x-mulaw 8khz stream
         deactivate Deepgram
 
         S -) Twilio: audio/x-mulaw 8khz stream
-        Twilio ->> Barbershop: "Hi! I'd like to..."
+        Twilio -) Barbershop: "Hi! I'd like to..."
 
     opt Getting availability for User
-        S ->> LLM: Conversation
+        S -) LLM: Conversation
 
         activate LLM
         LLM ->> Calendar: (TOOL) Get availability
@@ -91,7 +130,7 @@ sequenceDiagram
     %% Loop
     end 
     activate LLM
-    LLM ->> Twilio: (TOOL) End call
+    LLM -) Twilio: (TOOL) End call
     deactivate Twilio
     deactivate Barbershop
 
@@ -107,3 +146,4 @@ sequenceDiagram
 
     User ->> Barbershop: Show up for appointment
 ```
+</details>
