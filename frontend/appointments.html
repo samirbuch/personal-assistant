@@ -5,8 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="styles.css">
-  <script type="module" src="./supabase.js" defer></script>
-  <script src="./script.js" defer></script>
+  <script type="module" src="./scripts/navbar.js"></script>
+  <script type="module" src="./scripts/appointments.js"></script>
   <title>Appointments</title>
 </head>
 
@@ -35,7 +35,12 @@
   </nav>
 
   <div class="appointments-container">
-    <h2>Scheduled Appointments</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+      <h2 style="margin: 0;">Scheduled Appointments</h2>
+      <a href="./schedule.html" style="text-decoration: none;">
+        <button>Schedule New Appointment</button>
+      </a>
+    </div>
     <table id="appointments-table">
       <thead>
         <tr>

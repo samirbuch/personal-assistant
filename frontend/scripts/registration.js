@@ -27,30 +27,36 @@ form.addEventListener("submit", (e) => {
 
 async function register() {
   const formData = new FormData(form);
-  const email = formData.get("email")
+  const email = formData.get("email");
   const password = formData.get("password");
+  const firstName = formData.get("first-name");
+  const lastName = formData.get("last-name");
+  const phoneNumber = formData.get("phone-number");
 
-  if(!email.trim() || !password.trim()) {
+  if (!email.trim() || !password.trim()) {
     alert("Missing email or password");
     return;
   }
 
-  if(!Object.values(passwordRequirements).every(({ test }) => test(password))) {
-    alert("Your password must: \n" +
-      "- Be at least 8 characters\n" +
-      "- Have a number\n" +
-      "- Have a lowercase letter\n" +
-      "- Have an uppercase letter"
+  if (
+    !Object.values(passwordRequirements).every(({ test }) => test(password))
+  ) {
+    alert(
+      "Your password must: \n" +
+        "- Be at least 8 characters\n" +
+        "- Have a number\n" +
+        "- Have a lowercase letter\n" +
+        "- Have an uppercase letter"
     );
     return;
   }
 
   const { data, error } = await supabase.auth.signUp({
     email,
-    password
+    password,
   });
 
-  if(error) {
+  if (error) {
     console.error("Error signing up:", error);
     alert("There was a problem signing up. Try again later.");
     return;
@@ -58,6 +64,22 @@ async function register() {
 
   console.log("Registered user!", data);
 
-  // grab: data.user.user_id
-  // insert into public.User 
+  // grab: data.user.id
+  // insert into public.User
+
+  const { error: insertError } = await supabase.from("User").insert({
+    user_id: data.user.id,
+    first_name: firstName,
+    last_name: lastName,
+    phone_number: phoneNumber
+  });
+
+  if (insertError) {
+    console.error(insertError);
+    alert("User created, error inserting");
+    return;
+  }
+
+  // Go home.
+  window.location.href = "/";
 }
