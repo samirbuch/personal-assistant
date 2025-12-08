@@ -1,43 +1,63 @@
-<div align="center">
+# Personal Voice Assistant
 
-# Project Name
-[![Report Issue on Jira](https://img.shields.io/badge/Report%20Issues-Jira-0052CC?style=flat&logo=jira-software)](https://temple-cis-projects-in-cs.atlassian.net/jira/software/c/projects/DT/issues)
-[![Deploy Docs](https://github.com/ApplebaumIan/tu-cis-4398-docs-template/actions/workflows/deploy.yml/badge.svg)](https://github.com/ApplebaumIan/tu-cis-4398-docs-template/actions/workflows/deploy.yml)
-[![Documentation Website Link](https://img.shields.io/badge/-Documentation%20Website-brightgreen)](https://applebaumian.github.io/tu-cis-4398-docs-template/)
-
-
-</div>
-
-
-## Keywords
-
-Section #, as well as any words that quickly give your peers insights into the application like programming language, development platform, type of application, etc.
+**Keywords:** TypeScript, Node.js/Bun, Voice AI, Real-time Communication, Twilio, Deepgram, LLMs, WebSocket, State Machine Architecture
 
 ## Project Abstract
 
-This document proposes a novel application of a text message (SMS or Email) read-out and hands-free call interacted between an Android Smartphone and an infotainment platform (headunit) in a car environment. When a phone receives an SMS or Email, the text message is transferred from the phone to the headunit through a Bluetooth connection. On the headunit, user can control which and when the received SMS or E-mail to be read out through the in-vehicle audio system. The user may press one button on the headunit to activate the hands-free feature to call back the SMS sender.
+This project implements an AI-powered voice assistant that makes phone calls on behalf of a user. The system handles appointment scheduling, calendar integration, and can seamlessly transfer calls to a human when needed through an innovative 3-way conference calling architecture.
 
-## High Level Requirement
+**Key Features:**
+- **Autonomous Calling:** AI places calls to businesses and navigates phone menus (DTMF)
+- **Natural Conversation:** Real-time speech-to-text (STT) and text-to-speech (TTS) with interruption handling
+- **Calendar Integration:** Checks availability and creates appointments via Microsoft Outlook API
+- **Human Handoff:** Intelligent 3-way conference calling when human intervention is needed
+- **Speaker Diarization:** Distinguishes between multiple speakers in conference mode
+- **Smart Response Gating:** AI knows when to speak and when to stay silent during human conversations
 
-Describe the requirements – i.e., what the product does and how it does it from a user point of view – at a high level.
+### High Level Requirements
 
-## Conceptual Design
+1. User triggers outbound calls via API to any phone number
+2. AI conducts autonomous conversations for appointment scheduling and inquiries
+3. Calendar integration for checking availability and booking appointments
+4. DTMF navigation for automated phone menus
+5. Seamless 3-way conference calling when human intervention is needed
+6. Sub-200ms interruption detection and response
+7. Real-time audio streaming with minimal latency
 
-Describe the initial design concept: Hardware/software architecture, programming language, operating system, etc.
+### Conceptual Design
+
+**Architecture:** Event-driven system with state machine pattern (IDLE → LISTENING → THINKING → SPEAKING → INTERRUPTED)
+
+**Technology Stack:**
+- **Runtime:** Bun v1.3.0+ (JavaScript runtime)
+- **Language:** TypeScript v5+ with strict mode
+- **External APIs:** Twilio (voice calls), Deepgram (STT/TTS), Anthropic Claude (LLM), Microsoft Graph (calendar)
+- **Communication:** WebSocket for real-time audio streaming
+- **Audio:** μ-law encoding for telephony
+
+**Key Components:**
+- VoiceAgent: Main orchestrator
+- StateMachine: State management
+- AudioController: Audio gating for interruptions
+- ConversationManager: History and speaker tracking
+- ConferenceManager: 3-way calling coordination
+
+## Proof of Concept
+
+**GitHub Repository:** https://github.com/samirbuch/personal-assistant
 
 ## Background
 
-The background will contain a more detailed description of the product and a comparison to existing similar projects/products. A literature search should be conducted and the results listed. Proper citation of sources is required. If there are similar open-source products, you should state whether existing source will be used and to what extent. If there are similar closed-source/proprietary products, you should state how the proposed product will be similar and different.
+Traditional appointment scheduling and phone-based tasks are time-consuming and require human attention. Existing solutions fall into two categories: expensive commercial products like Google Duplex (closed-source, limited availability) or open-source frameworks like Rasa and Asterisk (require extensive manual setup and lack modern AI capabilities). This project bridges the gap by creating an open-source, cost-effective voice AI assistant using modern LLMs and cloud APIs. The system is built from scratch with original architecture, leveraging Twilio for telephony, Deepgram for speech processing, Anthropic Claude for conversation intelligence, and Microsoft Graph for calendar integration. Novel contributions include a dual-call conference architecture for seamless human handoff and adaptive interruption detection with sub-200ms response times.
 
 ## Required Resources
 
-Discuss what you need to develop this project. This includes background information you will need to acquire, hardware resources, and software resources. If these are not part of the standard Computer Science Department lab resources, these must be identified early and discussed with the instructor.
+**Hardware:** Standard laptop/desktop with internet connection (no special equipment required)
 
-## Collaborators
-
-<div align="center">
-
-[//]: # (Replace with your collaborators)
-[Ian Tyler Applebaum](https://github.com/ApplebaumIan) • [Kyle Dragon Lee](https://github.com/leekd99)
-
-</div>
+**Software & APIs:**
+- Bun runtime (free)
+- Twilio account (~$20-50/month: phone number, voice minutes, conference hosting)
+- Deepgram API (pay-as-you-go, free tier available)
+- Anthropic API (pay-as-you-go, free credits for new accounts)
+<!-- - Microsoft Azure app registration (free tier available) -->
+- ngrok for local webhook testing (free)
