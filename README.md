@@ -9,10 +9,8 @@ This project implements an AI-powered voice assistant that makes phone calls on 
 **Key Features:**
 - **Autonomous Calling:** AI places calls to businesses and navigates phone menus (DTMF)
 - **Natural Conversation:** Real-time speech-to-text (STT) and text-to-speech (TTS) with interruption handling
-- **Calendar Integration:** Checks availability and creates appointments via Microsoft Outlook API
-- **Human Handoff:** Intelligent 3-way conference calling when human intervention is needed
-- **Speaker Diarization:** Distinguishes between multiple speakers in conference mode
-- **Smart Response Gating:** AI knows when to speak and when to stay silent during human conversations
+- **Calendar Integration:** Checks availability via Microsoft Outlook
+- **Human Handoff:** Intelligent handoff conference calling when human intervention is needed
 
 ### High Level Requirements
 
@@ -20,7 +18,7 @@ This project implements an AI-powered voice assistant that makes phone calls on 
 2. AI conducts autonomous conversations for appointment scheduling and inquiries
 3. Calendar integration for checking availability and booking appointments
 4. DTMF navigation for automated phone menus
-5. Seamless 3-way conference calling when human intervention is needed
+5. Seamless conference calling when human intervention is needed
 6. Sub-200ms interruption detection and response
 7. Real-time audio streaming with minimal latency
 
