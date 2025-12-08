@@ -8,7 +8,7 @@ There are multiple components working together to create the assistant. Our stac
 * [**Twilio**](https://www.twilio.com/en-us/voice) - Phone service provider. Handles inbound and outbound calls.
 * [**Deepgram**](https://developers.deepgram.com/home) - Text-To-Speech (TTS) and Speech-To-Text (STT). We can stream it audio in 8khz µlaw base64 format and it will stream back matching text, and vice versa streaming it text and it streams back 8khz µlaw base64-encoded audio.
 * **LLM** - Whichever LLM we choose to use, I'm parital to [Claude Haiku](https://www.anthropic.com/claude/haiku) because of its simplicity, how fast it is, and how cheap it is per token.
-* **Our server** - We'll be using [Bun.js](https://bun.sh/) for the runtime and [Elysia](https://elysiajs.com/) as the web server. Essentially all of the services report back to our server through Websockets which we can then process and route to where they need to go.
+* **Our server** - We'll be using [Bun.js](https://bun.sh/) for the runtime as the web server. Essentially all of the services report back to our server through Websockets which we can then process and route to where they need to go.
 
 ## High-level overview
 The system works in a loop for the most part. Twilio first initiates the outbound call to, for example, a barbershop. 
