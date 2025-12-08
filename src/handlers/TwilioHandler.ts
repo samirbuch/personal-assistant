@@ -128,18 +128,36 @@ export function getSessionManager(): SessionManager {
 export async function initiateConference(
   callerStreamSid: string,
   callSid: string,
-  reason: string
+  reason: string,
+  appointmentId?: number
 ): Promise<string> {
-  if (!process.env.OWNER_PHONE_NUMBER) {
-    throw new Error("OWNER_PHONE_NUMBER not configured");
+  // Determine owner phone number: from appointment if available, otherwise from env
+  let ownerPhone = process.env.OWNER_PHONE_NUMBER;
+
+  if (appointmentId) {
+    console.log(`[Twilio] 📞 Fetching owner phone from appointment ${appointmentId}...`);
+    const { data: appointment, error } = await supabaseAdmin
+      .from("Appointments")
+      .select("*, user_id(phone_number)")
+      .eq("id", appointmentId)
+      .single();
+
+    if (error) {
+      console.error(`[Twilio] Failed to fetch appointment for conference:`, error);
+    } else if (appointment && appointment.user_id) {
+      ownerPhone = appointment.user_id.phone_number;
+      console.log(`[Twilio] 📱 Using owner phone from appointment: ${ownerPhone}`);
+    }
+  }
+
+  if (!ownerPhone) {
+    throw new Error("Owner phone number not found in appointment or OWNER_PHONE_NUMBER not configured");
   }
 
   console.log(`[Twilio] 🎙️  Initiating native conference for ${callerStreamSid} - Reason: ${reason}`);
 
   // Create ConferenceManager instance
-  const conferenceManager = new ConferenceManager(
-    process.env.OWNER_PHONE_NUMBER
-  );
+  const conferenceManager = new ConferenceManager(ownerPhone);
 
   // Use the native Twilio conference method
   await conferenceManager.createConferenceAndAddOwner(callSid, callerStreamSid);

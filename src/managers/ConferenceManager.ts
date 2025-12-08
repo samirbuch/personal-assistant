@@ -50,7 +50,7 @@ export class ConferenceManager {
   ): Promise<ConferenceState> {
     const conferenceName = `conf-${streamSid}`;
 
-    console.log(`\n[Conference] ═══ CREATING CONFERENCE (Option 2: AI Disconnect) ═══`);
+    console.log(`\n[Conference] ═══ CREATING CONFERENCE ═══`);
     console.log(`[Conference] Conference name: ${conferenceName}`);
     console.log(`[Conference] Original call SID: ${callSid}`);
 

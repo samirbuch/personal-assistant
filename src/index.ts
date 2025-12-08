@@ -193,10 +193,6 @@ Bun.serve({
         return new Response("Missing streamSid", { status: 400 });
       }
 
-      if (!process.env.OWNER_PHONE_NUMBER) {
-        return new Response("OWNER_PHONE_NUMBER not configured", { status: 500 });
-      }
-
       try {
         const body = await req.json() as { reason?: string; callSid?: string };
         const reason = body.reason || "User requested human assistance";
@@ -206,8 +202,13 @@ Bun.serve({
           return new Response("Missing callSid", { status: 400 });
         }
 
+        // Get appointment ID from session if available
+        const sessionManager = getSessionManager();
+        const agent = sessionManager.getAgent(streamSid);
+        const appointmentId = agent?.getAppointmentId();
+
         // Use native Twilio conference (AI will disconnect)
-        const conferenceName = await initiateConference(streamSid, callSid, reason);
+        const conferenceName = await initiateConference(streamSid, callSid, reason, appointmentId);
 
         console.log(`[API] Native conference created for ${streamSid}`);
 

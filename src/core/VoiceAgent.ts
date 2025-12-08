@@ -33,16 +33,16 @@ export class VoiceAgent {
   private callerPhone?: string;
   private appointmentId?: number;
   private appointmentStatus?: string;
-  private appointmentNotes?: string;
+  // private appointmentNotes?: string;
   private stateMachine: VoiceAgentStateMachine;
   private audio: AudioController;
   private conversation: ConversationManager;
-  private interruption: InterruptionDetector;
+  // private interruption: InterruptionDetector;
   private stt: LiveClient;
   private tts: SpeakLiveClient;
   private agent!: Agent<{}, never, never>; // Will be set after construction
   private abortController: AbortController | null = null;
-  private audioInFlight: boolean = false;
+  // private audioInFlight: boolean = false;
 
   constructor(config: VoiceAgentConfig) {
     this.streamSid = config.streamSid;
@@ -59,7 +59,7 @@ export class VoiceAgent {
     this.stateMachine = new VoiceAgentStateMachine();
     this.audio = new AudioController(config.ws, config.streamSid);
     this.conversation = new ConversationManager();
-    this.interruption = new InterruptionDetector();
+    // this.interruption = new InterruptionDetector();
 
     // Set up state change reactions
     this.setupStateHandlers();
@@ -312,7 +312,7 @@ export class VoiceAgent {
    */
   public handleTTSAudio(audioBase64: string): void {
     // Track that we're receiving audio
-    this.audioInFlight = true;
+    // this.audioInFlight = true;
 
     // Log audio chunk size for debugging
     // console.log(`[VoiceAgent ${this.streamSid}] 🔊 TTS audio chunk: ${audioBase64.length} bytes, gate=${this.audio.isEnabled()}`);
@@ -329,7 +329,7 @@ export class VoiceAgent {
    */
   public handleTTSFlushed(): void {
     console.log(`[VoiceAgent] TTS flushed - all audio sent`);
-    this.audioInFlight = false;
+    // this.audioInFlight = false;
 
     // Transition to LISTENING now that audio is complete
     if (this.stateMachine.is(AgentState.SPEAKING)) {
@@ -350,7 +350,7 @@ export class VoiceAgent {
       // Enable audio when we START speaking
       if (newState === AgentState.SPEAKING) {
         this.audio.enable();
-        this.audioInFlight = false; // Reset audio tracking
+        // this.audioInFlight = false; // Reset audio tracking
       }
 
       // When leaving SPEAKING state, disable audio only if no audio in flight
@@ -447,7 +447,7 @@ export class VoiceAgent {
    */
   public setAppointmentOutcome(status: string, notes?: string): void {
     this.appointmentStatus = status;
-    this.appointmentNotes = notes;
+    // this.appointmentNotes = notes;
     console.log(`[VoiceAgent] Appointment outcome set: ${status}${notes ? ` - ${notes}` : ''}`);
   }
 
@@ -486,18 +486,11 @@ export class VoiceAgent {
   public async transferToHuman(reason: string): Promise<void> {
     console.log(`[VoiceAgent] 🎙️  Transferring to human: ${reason}`);
 
-    const ownerPhone = process.env.OWNER_PHONE_NUMBER;
-    const ownerName = process.env.OWNER_NAME || "a team member";
-
-    if (!ownerPhone) {
-      throw new Error("OWNER_PHONE_NUMBER not configured");
-    }
-
     // Step 1: Announce the transfer to the caller
     console.log(`[VoiceAgent] Announcing transfer to caller...`);
     this.stateMachine.transition(AgentState.SPEAKING, "Announcing transfer to human");
 
-    const announcement = `One moment please, let me connect you with ${ownerName}.`;
+    const announcement = `One moment please, let me connect you with a human.`;
 
     // Send announcement to TTS
     this.audio.enable();
